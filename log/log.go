@@ -8,7 +8,7 @@
 //     us size-based rotation, retention, and gzip compression — the policy
 //     established by ADR-0018.
 //
-// This package is deliberately decoupled from internal/config. Init takes the
+// This package is deliberately decoupled from the config package. Init takes the
 // resolved home directory as a parameter rather than importing the config
 // package, which keeps the dependency graph one-directional (config → log,
 // never log → config) and avoids an import cycle once the config package
@@ -89,7 +89,7 @@ var Default = New(Options{Level: slog.LevelInfo, Format: "text"})
 // <homeDir>/logs/packwright.log at the given level and format ("json" or
 // "text"). It creates the logs directory if it does not already exist.
 //
-// Init does not import internal/config. The caller — typically main, after
+// Init does not import the config package. The caller — typically main, after
 // loading config — passes the resolved home directory in. This keeps the
 // dependency direction one-way (config depends on log, never the reverse) and
 // preserves the cycle break called out in feature/mvp1/plan/03-logging.md.
