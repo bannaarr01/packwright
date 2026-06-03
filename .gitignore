@@ -22,3 +22,5 @@ go.work.sum
 
 # macOS
 .DS_Store
+/feature/
+/.claude/session-log.md
