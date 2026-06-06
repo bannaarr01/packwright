@@ -108,7 +108,7 @@ func TestExecute_RendersGoldenParametersFile(t *testing.T) {
 		ctx,
 		albManifest(t, dir),
 		canonicalInputs(),
-		awsx.New("test-profile", "eu-west-1"),
+		awsx.NewForTest("test-profile", "eu-west-1"),
 		resource.WithBaseDir(dir),
 		resource.WithAZLookup(fakeAZLookup()),
 	)
@@ -171,7 +171,7 @@ func TestExecute_RejectsValidationErrors(t *testing.T) {
 		context.Background(),
 		albManifest(t, dir),
 		inputs,
-		awsx.New("p", "r"),
+		awsx.NewForTest("p", "r"),
 		resource.WithBaseDir(dir),
 		resource.WithAZLookup(fakeAZLookup()),
 	)
@@ -231,7 +231,7 @@ sleep 30
 		ctx,
 		m,
 		canonicalInputs(),
-		awsx.New("p", "r"),
+		awsx.NewForTest("p", "r"),
 		resource.WithBaseDir(dir),
 		resource.WithAZLookup(fakeAZLookup()),
 	)

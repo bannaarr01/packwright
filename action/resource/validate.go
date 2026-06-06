@@ -11,8 +11,9 @@ import (
 )
 
 // AZLookup returns the availability zone a subnet lives in. The distinct-az
-// validator depends on this; production callers pass awsx.Client.SubnetAZ,
-// tests pass an in-memory map.
+// validator depends on this; production callers get an awsx-backed lookup
+// derived from the manifest's VpcId input (see subnetAZLookup), tests pass
+// an in-memory map.
 type AZLookup func(ctx context.Context, subnetID string) (string, error)
 
 // FieldError is a single validation failure attached to a form field.

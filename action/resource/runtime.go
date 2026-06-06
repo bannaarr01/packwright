@@ -101,9 +101,9 @@ func WithEvents(api cfn.EventsAPI) Option {
 }
 
 // WithAZLookup overrides the AZ-lookup function used by the distinct-az
-// validator. Without it, the engine falls back to awsx.Client.SubnetAZ — which
-// is unimplemented until PR-04 ships, so production callers will want this.
-// Tests pass a deterministic in-memory lookup.
+// validator. Without it, the engine derives a lookup from awsClient.ListSubnets
+// keyed off the manifest's "VpcId" input (see subnetAZLookup). Tests pass a
+// deterministic in-memory lookup.
 func WithAZLookup(fn AZLookup) Option {
 	return func(c *config) { c.az = fn }
 }
@@ -115,8 +115,8 @@ func WithAZLookup(fn AZLookup) Option {
 // closes once both sources are done.
 //
 // awsClient supplies the Profile and Region that templated env vars reference
-// (see ADR-0008). It must be non-nil; pass awsx.New("", "") if neither field
-// matters for the manifest being executed.
+// (see ADR-0008) and the VPC-scoped subnet listing used by the fallback
+// AZLookup. It must be non-nil.
 func Execute(
 	ctx context.Context,
 	m *manifest.Manifest,
@@ -142,7 +142,7 @@ func Execute(
 		opt(&cfg)
 	}
 	if cfg.az == nil {
-		cfg.az = awsClient.SubnetAZ
+		cfg.az = subnetAZLookup(awsClient, inputs)
 	}
 
 	if errs := Validate(ctx, m, inputs, cfg.az); len(errs) > 0 {
@@ -242,8 +242,8 @@ func resolveEnv(envSpec map[string]string, inputs Inputs, awsClient *awsx.Client
 	for k, v := range inputs {
 		data[k] = v
 	}
-	data["Profile"] = awsClient.Profile
-	data["Region"] = awsClient.Region
+	data["Profile"] = awsClient.Profile()
+	data["Region"] = awsClient.Region()
 
 	out := make(map[string]string, len(envSpec))
 	for k, raw := range envSpec {
@@ -258,4 +258,32 @@ func resolveEnv(envSpec map[string]string, inputs Inputs, awsClient *awsx.Client
 		out[k] = buf.String()
 	}
 	return out, nil
+}
+
+// subnetAZLookup adapts awsx.Client.ListSubnets (which is VPC-scoped) to the
+// per-subnet AZLookup signature the distinct-az validator expects. It pulls
+// the VPC ID from inputs["VpcId"] — the conventional field name shared across
+// the resource manifests — and resolves subnets by scanning the cached list.
+// Returns nil when no VpcId input is present, which causes distinctAZ to
+// skip the rule rather than fail.
+//
+// ListSubnets caches per (profile, region, vpcID), so the first lookup hits
+// AWS once and every subsequent subnet check is in-memory.
+func subnetAZLookup(awsClient *awsx.Client, inputs Inputs) AZLookup {
+	vpcID, ok := inputs["VpcId"].(string)
+	if !ok || vpcID == "" {
+		return nil
+	}
+	return func(ctx context.Context, subnetID string) (string, error) {
+		subnets, err := awsClient.ListSubnets(ctx, vpcID)
+		if err != nil {
+			return "", err
+		}
+		for _, s := range subnets {
+			if s.ID == subnetID {
+				return s.AvailabilityZone, nil
+			}
+		}
+		return "", fmt.Errorf("subnet %s not found in VPC %s", subnetID, vpcID)
+	}
 }
