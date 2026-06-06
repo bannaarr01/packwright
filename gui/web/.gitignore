@@ -1,0 +1,15 @@
+node_modules/
+
+# Ignore everything under dist/ except the placeholder index.html that
+# ships in the repo so //go:embed compiles before the frontend has ever
+# been built. `dist/*` (with the trailing star) is required: a bare
+# `dist/` ignores the directory entry itself, which would also re-ignore
+# `dist/index.html` regardless of the negation rule below.
+dist/*
+!dist/index.html
+
+# Wails generates JS shims for the Go bindings here on `wails build` / `wails dev`.
+src/wailsjs/
+
+# Vite cache
+.vite/
