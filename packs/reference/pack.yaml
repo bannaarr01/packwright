@@ -1,0 +1,8 @@
+name: reference-pack
+version: 0.1.0
+description: Reference templates from the shimada-system-infra repo
+author: Packwright community
+homepage: https://github.com/bannaarr01/packwright
+requires:
+  packwright: ">=0.1.0"
+  packwright.manifest: "v1"
