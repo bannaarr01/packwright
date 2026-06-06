@@ -7,6 +7,12 @@ import (
 	"testing"
 )
 
+// Both TUILauncher and GUILauncher are wired in at link time by cmd_tui.go
+// and cmd_gui.go respectively (see their init functions). The bootstrap
+// "not linked" assertions that used to live here for one or both front-ends
+// have moved out as each PR landed — they would now spin up the real Wails
+// runtime, which is not appropriate for unit tests.
+
 // withStubLaunchers swaps in test launchers and restores the originals when the
 // test finishes, so mutating the package-level registry does not leak across
 // tests.
@@ -15,16 +21,6 @@ func withStubLaunchers(t *testing.T, tui, gui Launcher) {
 	origTUI, origGUI := TUILauncher, GUILauncher
 	t.Cleanup(func() { TUILauncher, GUILauncher = origTUI, origGUI })
 	TUILauncher, GUILauncher = tui, gui
-}
-
-// TestDefaultGUILauncherReportsNotLinked checks that the GUI front-end stub
-// is still in place. The TUI front-end is wired in by cmd_tui.go's init, so
-// no equivalent assertion is possible for TUILauncher; the corresponding GUI
-// assertion will move out once PR-09 lands.
-func TestDefaultGUILauncherReportsNotLinked(t *testing.T) {
-	if err := GUILauncher(context.Background()); err == nil || !strings.Contains(err.Error(), "GUI not linked") {
-		t.Fatalf("GUILauncher() error = %v, want it to contain %q", err, "GUI not linked")
-	}
 }
 
 func TestRootNoArgsInvokesTUILauncher(t *testing.T) {
