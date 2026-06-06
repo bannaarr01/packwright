@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PackwrightThemeTokens",
+  "description": "Semantic palette tokens consumed by both the TUI (via Lipgloss) and the GUI (via Tailwind). One file per mode.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "bg",
+    "fg",
+    "muted",
+    "accent",
+    "accent_alt",
+    "warn",
+    "error",
+    "success",
+    "border",
+    "selection_bg",
+    "selection_fg"
+  ],
+  "properties": {
+    "bg":           {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+    "fg":           {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+    "muted":        {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+    "accent":       {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+    "accent_alt":   {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+    "warn":         {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+    "error":        {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+    "success":      {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+    "border":       {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+    "selection_bg": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+    "selection_fg": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"}
+  }
+}
