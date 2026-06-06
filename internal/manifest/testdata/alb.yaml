@@ -1,0 +1,68 @@
+schema_version: packwright.manifest.v1
+kind: resource
+slash: /alb
+title: Application Load Balancer
+
+template:
+  kind: cloudformation
+  path: ../alb-template/alb-template.yaml
+  parameters_file: ../alb-template/parameters.json
+
+deploy:
+  driver: script
+  script: ../alb-template/deploy.sh
+  env:
+    STACK_NAME: "alb-stack-{{ .Project }}-{{ .Environment }}"
+    AWS_PROFILE: "{{ .Profile }}"
+    AWS_REGION: "{{ .Region }}"
+
+form:
+  - id: Project
+    label: Project
+    type: string
+    required: true
+
+  - id: Environment
+    label: Environment
+    type: enum
+    required: true
+    values: [dev, stg, prd]
+
+  - id: VpcId
+    label: VPC
+    type: aws/vpc-id
+    required: true
+
+  - id: SubnetIds
+    label: Subnets (>=2 AZ)
+    type: aws/subnet-ids
+    required: true
+    depends_on: [VpcId]
+    min: 2
+    validate:
+      - rule: distinct-az
+        message: subnets must span at least 2 availability zones
+
+  - id: SecurityGroupIds
+    label: Security groups
+    type: aws/sg-ids
+    depends_on: [VpcId]
+
+  - id: ALBName
+    label: ALB name
+    type: string
+    default: "{{ .Project }}-{{ .Environment }}-alb"
+
+  - id: TargetGroupName
+    label: Target group name
+    type: string
+    default: "{{ .Project }}-{{ .Environment }}-tg"
+
+  - id: HealthCheckPath
+    label: Health-check path
+    type: string
+    default: "/health"
+
+  - id: CertificateArn
+    label: ACM certificate
+    type: aws/acm-arn
