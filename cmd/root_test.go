@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 )
@@ -16,11 +17,12 @@ func withStubLaunchers(t *testing.T, tui, gui Launcher) {
 	TUILauncher, GUILauncher = tui, gui
 }
 
-func TestDefaultLaunchersReportNotLinked(t *testing.T) {
-	if err := TUILauncher(); err == nil || !strings.Contains(err.Error(), "TUI not linked") {
-		t.Fatalf("TUILauncher() error = %v, want it to contain %q", err, "TUI not linked")
-	}
-	if err := GUILauncher(); err == nil || !strings.Contains(err.Error(), "GUI not linked") {
+// TestDefaultGUILauncherReportsNotLinked checks that the GUI front-end stub
+// is still in place. The TUI front-end is wired in by cmd_tui.go's init, so
+// no equivalent assertion is possible for TUILauncher; the corresponding GUI
+// assertion will move out once PR-09 lands.
+func TestDefaultGUILauncherReportsNotLinked(t *testing.T) {
+	if err := GUILauncher(context.Background()); err == nil || !strings.Contains(err.Error(), "GUI not linked") {
 		t.Fatalf("GUILauncher() error = %v, want it to contain %q", err, "GUI not linked")
 	}
 }
@@ -28,8 +30,8 @@ func TestDefaultLaunchersReportNotLinked(t *testing.T) {
 func TestRootNoArgsInvokesTUILauncher(t *testing.T) {
 	tuiCalled, guiCalled := false, false
 	withStubLaunchers(t,
-		func() error { tuiCalled = true; return nil },
-		func() error { guiCalled = true; return nil },
+		func(context.Context) error { tuiCalled = true; return nil },
+		func(context.Context) error { guiCalled = true; return nil },
 	)
 
 	c := newRootCmd()
@@ -50,8 +52,8 @@ func TestRootNoArgsInvokesTUILauncher(t *testing.T) {
 func TestRootGUIFlagInvokesGUILauncher(t *testing.T) {
 	tuiCalled, guiCalled := false, false
 	withStubLaunchers(t,
-		func() error { tuiCalled = true; return nil },
-		func() error { guiCalled = true; return nil },
+		func(context.Context) error { tuiCalled = true; return nil },
+		func(context.Context) error { guiCalled = true; return nil },
 	)
 
 	c := newRootCmd()
@@ -66,20 +68,6 @@ func TestRootGUIFlagInvokesGUILauncher(t *testing.T) {
 	}
 	if tuiCalled {
 		t.Error("TUILauncher must not be invoked when --gui is set")
-	}
-}
-
-func TestRootNoArgsReturnsTUINotLinked(t *testing.T) {
-	// With no front-end registered, the default command must surface the
-	// "TUI not linked" stub error — the behaviour `./packwright` exhibits in a
-	// bootstrap build.
-	c := newRootCmd()
-	c.SetArgs(nil)
-	c.SetOut(&bytes.Buffer{})
-	c.SetErr(&bytes.Buffer{})
-	err := c.Execute()
-	if err == nil || !strings.Contains(err.Error(), "TUI not linked") {
-		t.Fatalf("Execute() error = %v, want it to contain %q", err, "TUI not linked")
 	}
 }
 

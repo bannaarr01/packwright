@@ -33,14 +33,18 @@ Run without arguments to launch the interactive terminal UI (TUI), or pass
 		SilenceErrors: false,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if guiMode {
-				return GUILauncher()
+				return GUILauncher(cmd.Context())
 			}
-			return TUILauncher()
+			return TUILauncher(cmd.Context())
 		},
 	}
 
 	cmd.Flags().BoolVar(&guiMode, "gui", false,
 		"launch the graphical (GUI) front-end instead of the terminal (TUI) front-end")
+
+	for _, sub := range rootSubcommands {
+		cmd.AddCommand(sub)
+	}
 
 	return cmd
 }
