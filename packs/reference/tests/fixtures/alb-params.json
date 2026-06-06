@@ -1,0 +1,11 @@
+{
+  "ALBName": "demo-prd-alb",
+  "CertificateArn": "arn:aws:acm:eu-west-1:111122223333:certificate/abcd1234-ef56-7890-abcd-ef1234567890",
+  "Environment": "prd",
+  "HealthCheckPath": "/health",
+  "Project": "demo",
+  "SecurityGroupIds": "sg-0a1b2c3d4e5f60001,sg-0a1b2c3d4e5f60002",
+  "SubnetIds": "subnet-0a1b2c3d4e5f60001,subnet-0a1b2c3d4e5f60002",
+  "TargetGroupName": "demo-prd-tg",
+  "VpcId": "vpc-0a1b2c3d4e5f60001"
+}

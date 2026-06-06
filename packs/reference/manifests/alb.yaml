@@ -1,0 +1,84 @@
+schema_version: packwright.manifest.v1
+kind: resource
+slash: /alb
+title: Application Load Balancer
+
+template:
+  kind: cloudformation
+  # Paths are relative to this manifest file. The reference pack ships no
+  # CFN YAML — the source of truth lives at the repo root.
+  path: ../../alb-template/alb-template.yaml
+  parameters_file: ../../alb-template/parameters.json
+
+deploy:
+  driver: script
+  script: ../deploy.sh
+  env:
+    STACK_NAME: "alb-stack-{{ .Project }}-{{ .Environment }}"
+    AWS_PROFILE: "{{ .Profile }}"
+    AWS_REGION: "{{ .Region }}"
+
+form:
+  - id: Project
+    label: Project
+    type: string
+    required: true
+
+  - id: Environment
+    label: Environment
+    type: enum
+    required: true
+    values: [dev, stg, prd]
+
+  - id: VpcId
+    label: VPC
+    type: aws/vpc-id
+    required: true
+
+  - id: SubnetIds
+    label: Subnets (≥2 AZ)
+    type: aws/subnet-ids
+    required: true
+    depends_on: [VpcId]
+    min: 2
+    validate:
+      - rule: distinct-az
+        message: subnets must span at least 2 availability zones
+
+  - id: SecurityGroupIds
+    label: Security groups
+    type: aws/sg-ids
+    required: true
+    depends_on: [VpcId]
+    min: 1
+
+  - id: ALBName
+    label: ALB name
+    type: string
+    default: "{{ .Project }}-{{ .Environment }}-alb"
+
+  - id: TargetGroupName
+    label: Target group name
+    type: string
+    default: "{{ .Project }}-{{ .Environment }}-tg"
+
+  - id: HealthCheckPath
+    label: Health-check path
+    type: string
+    default: "/health"
+
+  - id: CertificateArn
+    label: ACM certificate
+    type: aws/acm-arn
+    required: true
+
+# `observe` is a top-level resource-manifest key per ADR-0012 and
+# featureDetails.md §7. PR-05's initial `Manifest` struct doesn't list it
+# yet — the manifest loader needs an Observe field added before this
+# pack will load under strict YAML parsing.
+observe:
+  - kind: elbv2/target-health
+    target: "{{ .TargetGroupName }}"
+  - kind: cloudwatch/metric
+    namespace: AWS/ApplicationELB
+    metric: HTTPCode_ELB_5XX_Count

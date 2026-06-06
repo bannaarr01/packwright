@@ -1,0 +1,39 @@
+PARAMETERS=[
+  {
+    "ParameterKey": "ALBName",
+    "ParameterValue": "demo-prd-alb"
+  },
+  {
+    "ParameterKey": "CertificateArn",
+    "ParameterValue": "arn:aws:acm:eu-west-1:111122223333:certificate/abcd1234-ef56-7890-abcd-ef1234567890"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "prd"
+  },
+  {
+    "ParameterKey": "HealthCheckPath",
+    "ParameterValue": "/health"
+  },
+  {
+    "ParameterKey": "Project",
+    "ParameterValue": "demo"
+  },
+  {
+    "ParameterKey": "SecurityGroupIds",
+    "ParameterValue": "sg-0a1b2c3d4e5f60001,sg-0a1b2c3d4e5f60002"
+  },
+  {
+    "ParameterKey": "SubnetIds",
+    "ParameterValue": "subnet-0a1b2c3d4e5f60001,subnet-0a1b2c3d4e5f60002"
+  },
+  {
+    "ParameterKey": "TargetGroupName",
+    "ParameterValue": "demo-prd-tg"
+  },
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": "vpc-0a1b2c3d4e5f60001"
+  }
+]
+COMMAND=aws --profile demo --region eu-west-1 cloudformation deploy --stack-name alb-stack-demo-prd --template-file ../../alb-template/alb-template.yaml --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset --parameter-overrides file://<PARAMETERS_FILE>
