@@ -1,0 +1,15 @@
+{
+  "VpcId": "vpc-0a42b26c425daee77",
+  "SubnetIds": [
+    "subnet-036d50016c2f16a92",
+    "subnet-081bcbee250e58e8d",
+    "subnet-039e4084f247e7257"
+  ],
+  "SecurityGroupIds": [
+    "sg-0d1ef14a0b2c3d4e5"
+  ],
+  "ALBName": "babe-main-prd-alb",
+  "TargetGroupName": "babe-main-prd-tg",
+  "HealthCheckPath": "/health",
+  "CertificateArn": "arn:aws:acm:eu-west-1:111111111111:certificate/645fb788"
+}

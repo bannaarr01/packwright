@@ -1,0 +1,26 @@
+# Compiled binary (built at repo root by `go build -o packwright .`)
+/packwright
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries, profiles, and coverage output
+*.test
+*.out
+coverage.*
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+
+# macOS
+.DS_Store
+/feature/
+/.claude/session-log.md

@@ -1,0 +1,22 @@
+# Negative-case fixture: declares a kind: resource manifest but omits the
+# mandatory template section AND introduces an unknown top-level key
+# ("observe"). The loader must reject this with a structured error before
+# anything tries to execute it.
+schema_version: packwright.manifest.v1
+kind: resource
+slash: /broken
+title: Broken Manifest
+
+deploy:
+  driver: script
+  script: ./nope.sh
+
+observe:
+  - kind: cloudwatch/metric
+    namespace: AWS/ApplicationELB
+    metric: HTTPCode_ELB_5XX_Count
+
+form:
+  - id: Name
+    label: Name
+    type: string

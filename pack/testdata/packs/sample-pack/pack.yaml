@@ -1,0 +1,7 @@
+name: sample-pack
+version: 0.1.0
+description: Sample pack used by Packwright's discovery tests.
+homepage: https://example.com/sample-pack
+author: Packwright tests
+requires:
+  packwright: ">=0.1.0"

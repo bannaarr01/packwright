@@ -1,0 +1,97 @@
+// Package manifest is a minimal shim of the action-manifest data model that the
+// resource engine consumes.
+//
+// The full implementation — YAML loader, strict validation, support for all
+// command kinds — is the responsibility of PR-05. This file declares only the
+// types the engine references at compile time so PR-10 can land independently
+// of PR-05's merge order. Once PR-05 lands the shim is replaced wholesale; no
+// engine code needs to change.
+//
+// TODO(PR-05): replace this shim with the canonical manifest package.
+package manifest
+
+// Kind identifies which command-runtime services a manifest expects. MVP 1
+// implements only KindResource; the others are placeholders so manifests for
+// later command kinds can be parsed without crashing.
+type Kind string
+
+// Recognised manifest kinds.
+const (
+	KindResource  Kind = "resource"
+	KindShell     Kind = "shell"
+	KindMonitor   Kind = "monitor"
+	KindComposite Kind = "composite"
+)
+
+// FieldType is the widget / picker the front-end renders for a form field.
+type FieldType string
+
+// Field types supported by MVP 1. The aws/* picker types are populated by the
+// front-end before Execute is called; the engine treats their values opaquely.
+const (
+	TypeString       FieldType = "string"
+	TypeInt          FieldType = "int"
+	TypeBool         FieldType = "bool"
+	TypeEnum         FieldType = "enum"
+	TypeMultistring  FieldType = "multistring"
+	TypeSecret       FieldType = "secret"
+	TypeAWSVpcID     FieldType = "aws/vpc-id"
+	TypeAWSSubnetIDs FieldType = "aws/subnet-ids"
+	TypeAWSSGIDs     FieldType = "aws/sg-ids"
+	TypeAWSACMArn    FieldType = "aws/acm-arn"
+)
+
+// Manifest is the parsed contents of a single action manifest file.
+type Manifest struct {
+	SchemaVersion string        `yaml:"schema_version"`
+	ID            string        `yaml:"id"`
+	Kind          Kind          `yaml:"kind"`
+	Slash         string        `yaml:"slash"`
+	Title         string        `yaml:"title"`
+	Template      *TemplateSpec `yaml:"template,omitempty"`
+	Deploy        *DeploySpec   `yaml:"deploy,omitempty"`
+	Form          []Field       `yaml:"form,omitempty"`
+}
+
+// TemplateSpec describes where the underlying infrastructure template lives
+// and where the engine should write the generated parameters file.
+//
+// Path and ParametersFile are interpreted relative to the manifest's
+// containing directory; callers pass that base directory to the engine
+// explicitly (see resource.WithBaseDir).
+type TemplateSpec struct {
+	Kind           string `yaml:"kind"`            // currently always "cloudformation"
+	Path           string `yaml:"path"`            // template file (e.g. alb-template.yaml)
+	ParametersFile string `yaml:"parameters_file"` // generated parameters.json
+}
+
+// DeploySpec describes how the engine drives the deploy. MVP 1 supports only
+// the "script" driver (ADR-0008); the "sdk" driver lands in MVP 2/3.
+type DeploySpec struct {
+	Driver string            `yaml:"driver"`        // "script" | "sdk"
+	Script string            `yaml:"script"`        // path to deploy.sh, relative to the manifest
+	Env    map[string]string `yaml:"env,omitempty"` // env-var name -> Go template string
+}
+
+// Field is one entry in a manifest's form schema.
+type Field struct {
+	ID        string          `yaml:"id"`
+	Label     string          `yaml:"label"`
+	Type      FieldType       `yaml:"type"`
+	Required  bool            `yaml:"required,omitempty"`
+	Default   any             `yaml:"default,omitempty"`
+	Min       *int            `yaml:"min,omitempty"`
+	Max       *int            `yaml:"max,omitempty"`
+	Values    []string        `yaml:"values,omitempty"`
+	DependsOn []string        `yaml:"depends_on,omitempty"`
+	Validate  []ValidatorSpec `yaml:"validate,omitempty"`
+}
+
+// ValidatorSpec is a manifest-declared validator. The engine recognises a
+// fixed set of rule names (distinct-az, length, ...); unknown rules are
+// reported as configuration errors at validate time.
+type ValidatorSpec struct {
+	Rule    string         `yaml:"rule"`
+	Message string         `yaml:"message,omitempty"`
+	Params  map[string]any `yaml:",inline,omitempty"`
+}
