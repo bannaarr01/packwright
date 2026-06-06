@@ -1,0 +1,13 @@
+{
+  "bg":           "#0E1116",
+  "fg":           "#E6EDF3",
+  "muted":        "#7D8590",
+  "accent":       "#7EE787",
+  "accent_alt":   "#79C0FF",
+  "warn":         "#D29922",
+  "error":        "#F85149",
+  "success":      "#56D364",
+  "border":       "#30363D",
+  "selection_bg": "#1F6FEB",
+  "selection_fg": "#FFFFFF"
+}
