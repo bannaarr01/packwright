@@ -1,0 +1,4 @@
+schema_version: packwright.manifest.v1
+kind: resource
+slash: /example
+title: Example resource action
