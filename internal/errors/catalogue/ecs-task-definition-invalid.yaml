@@ -1,0 +1,14 @@
+id: ecs-task-definition-invalid
+priority: 40
+match:
+  aws_service: ECS
+  aws_code: ClientException
+  raw_regex: "(?:[Tt]ask [Dd]efinition is not valid|[Cc]ontainer.+is not valid|Invalid request provided|Invalid 'cpu'|Invalid 'memory')"
+title: "ECS task definition rejected by the API"
+cause: "The task definition failed ECS validation. The most common causes are an incompatible cpu/memory pair for Fargate, a missing executionRoleArn for awslogs, or a container with both image and missing essential."
+suggested:
+  - "Validate cpu/memory pairs for Fargate — only specific combinations are legal (e.g. 256/512, 512/1024, 1024/2048)."
+  - "If using awslogs, awsfirelens, or pulling from ECR private, set executionRoleArn on the task definition."
+  - "Re-register the task definition manually to read the full ECS error: aws ecs register-task-definition --cli-input-json file://taskdef.json."
+console_url: "https://console.aws.amazon.com/ecs/v2/task-definitions?region={{ .Region }}"
+retryable: true

@@ -1,0 +1,14 @@
+id: vpc-limit-exceeded
+priority: 40
+match:
+  aws_service: EC2
+  aws_code: VpcLimitExceeded
+  raw_regex: "VpcLimitExceeded|maximum number of VPCs has been reached"
+title: "VPC quota reached in this region"
+cause: "The account has hit the per-region VPC quota in {{ .Region }} (default is 5)."
+suggested:
+  - "Delete an unused VPC, or reuse an existing one by switching the manifest's VpcId field."
+  - "Request a quota increase: aws service-quotas request-service-quota-increase --service-code vpc --quota-code L-F678F1CE --desired-value 10."
+  - "Audit current VPC usage: aws ec2 describe-vpcs --region {{ .Region }} --query 'length(Vpcs[*])'."
+console_url: "https://console.aws.amazon.com/servicequotas/home/services/vpc/quotas?region={{ .Region }}"
+retryable: false

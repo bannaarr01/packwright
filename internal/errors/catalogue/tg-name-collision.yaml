@@ -1,0 +1,14 @@
+id: tg-name-collision
+priority: 40
+match:
+  aws_service: ElasticLoadBalancingV2
+  aws_code: DuplicateTargetGroupName
+  raw_regex: "[Tt]arget [Gg]roup with [Nn]ame '(?P<TargetGroupName>[^']+)' already exists"
+title: "Target group name collision"
+cause: "A target group named {{ .TargetGroupName }} already exists in this VPC. Target group names must be unique per region per account."
+suggested:
+  - "Pick a different TargetGroupName (try '{{ .TargetGroupName }}-v2')."
+  - "Delete the existing TG if it is unused: aws elbv2 delete-target-group --target-group-arn <arn>."
+  - "Check whether a previous deploy partially succeeded — the TG may have been orphaned by a rollback."
+console_url: "https://console.aws.amazon.com/ec2/home?region={{ .Region }}#TargetGroups:"
+retryable: true

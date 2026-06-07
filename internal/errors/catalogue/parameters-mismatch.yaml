@@ -1,0 +1,14 @@
+id: parameters-mismatch
+priority: 40
+match:
+  aws_service: CloudFormation
+  aws_code: ValidationError
+  raw_regex: "[Pp]arameters?:?\\s*\\[(?P<UnusedParameter>[A-Za-z0-9_]+)\\] (?:does not exist|do not exist|must have values|are not present) in the template"
+title: "parameters.json references a parameter the template does not define"
+cause: "The submitted parameters.json passes a value for {{ .UnusedParameter }}, but the CloudFormation template does not declare a Parameter with that name."
+suggested:
+  - "Add a matching Parameters: { {{ .UnusedParameter }}: ... } block to the template, or remove {{ .UnusedParameter }} from parameters.json."
+  - "Diff the rendered parameters.json against the template's Parameters keys before re-deploying."
+  - "Run: aws cloudformation validate-template --template-body file://<template> to spot this earlier."
+console_url: "https://console.aws.amazon.com/cloudformation/home?region={{ .Region }}#/stacks?filteringText={{ .StackName }}"
+retryable: true

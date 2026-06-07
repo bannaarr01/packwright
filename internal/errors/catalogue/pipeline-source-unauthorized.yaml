@@ -1,0 +1,13 @@
+id: pipeline-source-unauthorized
+priority: 40
+match:
+  aws_service: CodePipeline
+  raw_regex: "(?:[Cc]onnection|[Oo]Auth).*(?:unauthorized|not authorized|invalid token|revoked|expired)|InvalidConnectionException"
+title: "Pipeline source connection is not authorized"
+cause: "CodePipeline cannot pull from the configured source (GitHub / Bitbucket / CodeStar Connections). The OAuth token has been revoked, expired, or the connection is still in PENDING state."
+suggested:
+  - "Open the Developer Tools console and complete the pending connection handshake."
+  - "Verify connection status: aws codestar-connections list-connections --region {{ .Region }}."
+  - "If using a GitHub OAuth token directly, rotate it and update the pipeline's source action."
+console_url: "https://console.aws.amazon.com/codesuite/settings/connections?region={{ .Region }}"
+retryable: true
