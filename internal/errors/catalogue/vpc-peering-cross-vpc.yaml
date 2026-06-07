@@ -1,0 +1,13 @@
+id: vpc-peering-cross-vpc
+priority: 40
+match:
+  aws_service: EC2
+  raw_regex: "[Ss]ubnets? .*(?:must be in the same VPC|belong to (?:a |the )?different VPCs)|VPC peering connection is not (?:active|enabled)"
+title: "Resources span different VPCs without active peering"
+cause: "Selected subnets / security groups belong to more than one VPC, or the VPC peering connection between them is not active."
+suggested:
+  - "Pick resources from a single VPC — most CFN resources cannot straddle a peering boundary."
+  - "If cross-VPC is required, verify the peering connection: aws ec2 describe-vpc-peering-connections --filters Name=status-code,Values=active."
+  - "Confirm route tables, security groups, and DNS settings allow traffic across the peer."
+console_url: "https://console.aws.amazon.com/vpc/home?region={{ .Region }}#PeeringConnections:"
+retryable: true

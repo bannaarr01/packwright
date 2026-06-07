@@ -1,0 +1,14 @@
+id: rollback-complete
+priority: 60
+match:
+  aws_service: CloudFormation
+  aws_code: ValidationError
+  raw_regex: "(?P<StackName>[A-Za-z0-9-]+) is in ROLLBACK_COMPLETE state and can not be updated"
+title: "Stack is stuck in ROLLBACK_COMPLETE"
+cause: "The previous create attempt for stack {{ .StackName }} failed and rolled back. CloudFormation refuses to update a stack in this state — it must be deleted and recreated."
+suggested:
+  - "Delete the failed stack: aws cloudformation delete-stack --stack-name {{ .StackName }} --region {{ .Region }}."
+  - "Wait for DELETE_COMPLETE (check with describe-stacks) before re-running the deploy."
+  - "Inspect the original failure first — events from the first deploy are still in the console and explain why it rolled back."
+console_url: "https://console.aws.amazon.com/cloudformation/home?region={{ .Region }}#/stacks?filteringText={{ .StackName }}"
+retryable: false

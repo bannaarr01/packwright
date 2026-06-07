@@ -1,0 +1,14 @@
+id: waf-wcu-limit
+priority: 40
+match:
+  aws_service: WAFv2
+  aws_code: WAFLimitsExceededException
+  raw_regex: "(?:web ?ACL|rule group)?.*(?:WCU|web ACL capacity unit).*(?:exceed|limit)"
+title: "WAF rule capacity (WCU) limit exceeded"
+cause: "The web ACL or rule group would consume more capacity units than its declared limit allows. Default limits are 1500 WCU for a web ACL and 1500 WCU for a custom rule group."
+suggested:
+  - "Reduce regex / IPSet sizes — regex statements and IPSets are the most WCU-expensive primitives."
+  - "Raise the rule group's declared Capacity, or split rules across multiple rule groups."
+  - "Inspect cost per rule: aws wafv2 check-capacity --scope REGIONAL --rules file://rules.json."
+console_url: "https://console.aws.amazon.com/wafv2/homev2/web-acls?region={{ .Region }}"
+retryable: true

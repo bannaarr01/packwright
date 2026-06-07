@@ -1,0 +1,13 @@
+id: subnet-az-mismatch
+priority: 40
+match:
+  aws_service: ElasticLoadBalancingV2
+  raw_regex: "[Aa]t least two subnets in (?:different|two or more) Availability Zones"
+title: "Subnets must span at least two Availability Zones"
+cause: "The load balancer / target group requires subnets in two or more distinct AZs but the selected SubnetIds all live in the same AZ."
+suggested:
+  - "Open the subnet picker and choose subnets from at least two different AZs."
+  - "Use the manifest's distinct-az validator on the SubnetIds field to catch this at form-submit time."
+  - "Verify your VPC has subnets in multiple AZs: aws ec2 describe-subnets --filters Name=vpc-id,Values={{ .VpcId }}."
+console_url: "https://console.aws.amazon.com/vpc/home?region={{ .Region }}#subnets:"
+retryable: true

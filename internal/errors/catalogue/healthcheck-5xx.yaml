@@ -1,0 +1,13 @@
+id: healthcheck-5xx
+priority: 30
+match:
+  aws_service: ElasticLoadBalancingV2
+  raw_regex: "[Hh]ealth checks (?:failed|returned).*5\\d{2}|Target.+is unhealthy|HealthCheck.*(?:Unhealthy|failed)"
+title: "Health check is returning 5xx"
+cause: "The target group's health-check path is returning a 5xx (server error). Targets won't be marked healthy and traffic won't flow until the path returns the configured success code (default 200)."
+suggested:
+  - "Confirm the application starts before the health-check grace period expires (default 30s)."
+  - "Verify the path / port / protocol on the target group match a route the app actually serves."
+  - "Tail target logs and reproduce locally with: curl -i http://<target>:<port>{{ .HealthCheckPath }}."
+console_url: "https://console.aws.amazon.com/ec2/home?region={{ .Region }}#TargetGroups:"
+retryable: true
