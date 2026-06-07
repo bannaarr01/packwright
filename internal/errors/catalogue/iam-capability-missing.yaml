@@ -1,0 +1,14 @@
+id: iam-capability-missing
+priority: 50
+match:
+  aws_service: CloudFormation
+  aws_code: InsufficientCapabilitiesException
+  raw_regex: 'Requires capabilities : \[(?P<MissingCapability>CAPABILITY_[A-Z_]+)\]'
+title: "Stack needs IAM capability acknowledgement"
+cause: "The stack creates or modifies IAM resources, so CloudFormation refused to apply it without the {{ .MissingCapability }} acknowledgement."
+suggested:
+  - "Re-run the deploy with --capabilities {{ .MissingCapability }} (or CAPABILITY_IAM / CAPABILITY_NAMED_IAM as appropriate)."
+  - "If the action's deploy script wraps aws cloudformation deploy, add the capability flag to its invocation."
+  - "Review the IAM resources in the template — granting them is a security decision, not a checkbox."
+console_url: "https://console.aws.amazon.com/cloudformation/home?region={{ .Region }}#/stacks?filteringText={{ .StackName }}"
+retryable: true

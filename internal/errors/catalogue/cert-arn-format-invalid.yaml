@@ -1,0 +1,13 @@
+id: cert-arn-format-invalid
+priority: 70
+match:
+  aws_service: ElasticLoadBalancingV2
+  raw_regex: "(?P<BadArn>arn:aws:[^ ]*)?.*(?:is not a valid|malformed|invalid format).+(?:certificate|ARN)"
+title: "Certificate ARN is malformed"
+cause: "The CertificateArn value is not a valid ACM ARN. A valid ARN looks like arn:aws:acm:<region>:<account-id>:certificate/<uuid>."
+suggested:
+  - "Re-copy the ARN from ACM — partial copies and trailing whitespace are the usual culprits."
+  - "List valid ARNs: aws acm list-certificates --region {{ .Region }} --query 'CertificateSummaryList[].CertificateArn'."
+  - "If the manifest uses an aws/acm-arn picker, re-run the picker rather than pasting an ARN by hand."
+console_url: "https://console.aws.amazon.com/acm/home?region={{ .Region }}#/certificates/list"
+retryable: true

@@ -24,3 +24,9 @@ go.work.sum
 .DS_Store
 /feature/
 /.claude/session-log.md
+/.playwright-mcp/
+/scripts/
+/build/bin/
+/packwright-v*
+/packwright.app/
+/wails-dev-launcher*.png

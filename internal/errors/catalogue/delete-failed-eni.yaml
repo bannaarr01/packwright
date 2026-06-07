@@ -1,0 +1,13 @@
+id: delete-failed-eni
+priority: 50
+match:
+  aws_service: EC2
+  raw_regex: "[Nn]etwork interface '?(?P<ENIID>eni-[a-f0-9]+)'? .*(?:is currently in use|is in use|has a non-deletable)"
+title: "Stack deletion blocked by a leftover network interface"
+cause: "ENI {{ .ENIID }} is still attached to another resource (often a Lambda VPC ENI, NAT gateway, or VPC endpoint) and is blocking subnet / SG deletion during the stack's DELETE."
+suggested:
+  - "Identify what holds it: aws ec2 describe-network-interfaces --network-interface-ids {{ .ENIID }}."
+  - "Detach or delete the dependent resource — Lambda VPC ENIs in particular can take 20+ minutes to release after the function is deleted."
+  - "Retry the stack delete once the ENI is gone: aws cloudformation delete-stack --stack-name {{ .StackName }}."
+console_url: "https://console.aws.amazon.com/ec2/home?region={{ .Region }}#NIC:search={{ .ENIID }}"
+retryable: true
