@@ -1,0 +1,13 @@
+id: cert-region-mismatch
+priority: 40
+match:
+  aws_service: ElasticLoadBalancingV2
+  raw_regex: "[Cc]ertificate '?(?P<CertArn>arn:aws:acm:(?P<CertRegion>[a-z0-9-]+):[0-9]+:certificate/[a-z0-9-]+)'? .*(?:not found|does not exist|invalid)"
+title: "ACM certificate is in the wrong region"
+cause: "The ACM certificate {{ .CertArn }} lives in {{ .CertRegion }}, but the listener is deploying into {{ .Region }}. ACM certs for an ALB must be in the same region as the ALB; CloudFront is the only exception."
+suggested:
+  - "Re-issue or copy the certificate in {{ .Region }} via ACM and update the manifest's CertificateArn."
+  - "If this is a CloudFront distribution, target us-east-1 for the cert and the listener region for the origin."
+  - "Validate ahead of time with: aws acm list-certificates --region {{ .Region }}."
+console_url: "https://console.aws.amazon.com/acm/home?region={{ .Region }}#/certificates/list"
+retryable: true

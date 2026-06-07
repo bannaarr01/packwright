@@ -1,0 +1,13 @@
+id: iam-role-missing-permission
+priority: 30
+match:
+  aws_service: CloudFormation
+  raw_regex: "User: (?P<PrincipalArn>arn:aws:(?:iam|sts)::[0-9]+:[^ ]+) is not authorized to perform: (?P<MissingAction>[a-zA-Z0-9_:*-]+) on resource: (?P<ResourceArn>[^ ]+)"
+title: "Deployer role is missing an IAM permission"
+cause: "{{ .PrincipalArn }} cannot perform {{ .MissingAction }} on {{ .ResourceArn }} — the policy attached to the deploy principal does not grant this action."
+suggested:
+  - "Add an allow statement for {{ .MissingAction }} on {{ .ResourceArn }} to the deploy role's policy."
+  - "Confirm you are using the intended profile: aws sts get-caller-identity (compare with {{ .PrincipalArn }})."
+  - "If this is an SCP / permissions-boundary deny, escalate to whoever owns the org policy — adding a role policy will not help."
+console_url: "https://console.aws.amazon.com/iam/home?region={{ .Region }}#/policies"
+retryable: false
