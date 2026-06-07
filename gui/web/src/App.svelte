@@ -3,6 +3,7 @@
   import { api, type ThemePayload } from './lib/api';
   import Launcher from './lib/launcher/Launcher.svelte';
   import Palette from './lib/palette/Palette.svelte';
+  import logoIconUrl from './assets/logo-icon.svg';
 
   // Root component. Owns the palette-open state and the resolved theme; sub
   // components read those via props instead of any global store so the data
@@ -65,9 +66,8 @@
   <header
     class="flex items-center justify-between px-6 py-3 border-b border-light-border dark:border-dark-border select-none"
   >
-    <div class="font-mono text-sm">
-      <span class="text-light-accent dark:text-dark-accent">packwright</span>
-      <span class="opacity-60 mx-2">·</span>
+    <div class="flex items-center gap-3 font-mono text-sm">
+      <img src={logoIconUrl} alt="Packwright" class="h-6 w-auto" />
       <span>{profile}</span>
       <span class="opacity-60 mx-2">·</span>
       <span>{region}</span>
