@@ -59,15 +59,13 @@ func Discover(homeDir string) ([]*Pack, error) {
 	return packs, errors.Join(errs...)
 }
 
-// LoadUserScope returns the user-scope pack rooted at <homeDir>/commands.
-// MVP-3 PR-01 is the canonical owner of this directory; in MVP 1 the returned
-// Pack carries no manifests, so callers can wire it into a Registry without
-// special-casing.
+// LoadUserScope returns the user-scope pack: a synthetic *Pack named
+// UserScopeName whose Manifests are loaded from <homeDir>/commands/*.yaml and
+// <homeDir>/monitors/*.yaml. The exported entry point lives here for
+// continuity with MVP-1 PR-06's stub; the implementation is in user_scope.go
+// alongside the Scope plumbing introduced by MVP-3 PR-01.
 func LoadUserScope(homeDir string) (*Pack, error) {
-	return &Pack{
-		Name: "user-scope",
-		Dir:  filepath.Join(homeDir, commandsSubdir),
-	}, nil
+	return loadUserScope(homeDir)
 }
 
 // loadPack reads pack.yaml and every manifests/*.yaml file beneath dir into a
