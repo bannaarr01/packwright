@@ -1,0 +1,14 @@
+{{- /* pack.yaml — pack metadata for a scaffolded pack tree. */ -}}
+name: {{ .Name }}
+version: 0.1.0
+{{- if .Description }}
+description: {{ q .Description }}
+{{- end }}
+{{- if .Author }}
+author: {{ q .Author }}
+{{- end }}
+{{- if .Homepage }}
+homepage: {{ q .Homepage }}
+{{- end }}
+requires:
+  packwright: ">=0.1.0"
