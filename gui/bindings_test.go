@@ -70,8 +70,8 @@ func TestListSlashCommandsReadsFromLoadPalette(t *testing.T) {
 
 	got := newTestApp().ListSlashCommands()
 	want := []SlashCommand{
-		{Slash: "/restart-api", Title: "Restart API"},
-		{Slash: "/alb", Title: "ALB (acme)"},
+		{Slash: "/restart-api", Title: "Restart API", Source: "user", Scope: string(pack.ScopeUser)},
+		{Slash: "/alb", Title: "ALB (acme)", Source: "acme", Scope: string(pack.ScopePack)},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("ListSlashCommands() len = %d, want %d", len(got), len(want))

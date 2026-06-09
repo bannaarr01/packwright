@@ -11,10 +11,16 @@ import (
 
 // SlashCommand is one entry returned by ListSlashCommands. The shape mirrors
 // the TUI's paletteItem so future pack-registry routing can swap both
-// front-ends to the real source in one change.
+// front-ends to the real source in one change. Source / Scope / Pinned are
+// the same fields pack.PaletteEntry carries; the sidebar groups rows by
+// them, so dropping any of these would force the frontend to re-derive
+// information the Go side already knows.
 type SlashCommand struct {
-	Slash string `json:"slash"`
-	Title string `json:"title"`
+	Slash  string `json:"slash"`
+	Title  string `json:"title"`
+	Source string `json:"source"`
+	Scope  string `json:"scope"`
+	Pinned bool   `json:"pinned"`
 }
 
 // ThemePayload is the Theme binding's return shape. Tokens carries the same
@@ -88,7 +94,13 @@ func (a *App) ListSlashCommands() []SlashCommand {
 	}
 	out := make([]SlashCommand, 0, len(entries))
 	for _, e := range entries {
-		out = append(out, SlashCommand{Slash: e.Slash, Title: e.Title})
+		out = append(out, SlashCommand{
+			Slash:  e.Slash,
+			Title:  e.Title,
+			Source: e.Source,
+			Scope:  string(e.Scope),
+			Pinned: e.Pinned,
+		})
 	}
 	a.logger.Info("gui: palette: list", "rows", len(out))
 	return out

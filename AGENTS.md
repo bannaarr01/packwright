@@ -193,6 +193,21 @@ and the `mcp__playwright__browser_*` tools become available for the session.
 - The Playwright MCP can't drive the packaged `.app` directly — it needs the
   CDP endpoint, which only `wails dev` exposes.
 
+## Git hooks (Husky)
+
+The repo ships Husky-managed hooks at `.husky/`. Run `npm install` once at the
+repo root after cloning — that installs Husky (the only dep in the root
+`package.json`) and points `core.hooksPath` at `.husky/_`.
+
+- `pre-commit` → `gofmt -l .` and `go vet ./...`. Fails the commit if either
+  is unclean. Fix with `gofmt -w .`.
+- `pre-push` → `go test ./...` and (when `gui/web/node_modules` exists)
+  `npm run check` inside `gui/web/`.
+
+Both are fast paths to the gates `AGENTS.md` already requires. Bypass with
+`git commit --no-verify` / `git push --no-verify` when you genuinely need
+to (e.g. an empty docs-only commit on a hook-edit branch).
+
 ## Code Style
 - **Formatting is non-negotiable**: `gofmt` is the law (tabs for indentation,
   gofmt's canonical layout). `gofmt -l .` must return empty. Configure your editor

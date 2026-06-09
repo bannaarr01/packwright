@@ -1,0 +1,27 @@
+#!/usr/bin/env sh
+
+# Fast gates only. Anything that takes more than ~2s belongs in pre-push,
+# not here — pre-commit fires on every `git commit` and a slow hook breeds
+# `--no-verify` muscle memory.
+#
+# Bypass intentionally: `git commit --no-verify`.
+
+set -e
+
+# 1. gofmt — must print nothing. AGENTS.md treats unformatted code as a
+#    blocking failure, so we fail the commit and tell the user how to fix
+#    it in one line.
+unformatted="$(gofmt -l . 2>/dev/null || true)"
+if [ -n "$unformatted" ]; then
+  echo "✗ gofmt: the following files are not formatted:"
+  printf '    %s\n' $unformatted
+  echo
+  echo "  Fix: gofmt -w ."
+  exit 1
+fi
+
+# 2. go vet — static analysis must be clean across all packages.
+if ! go vet ./...; then
+  echo "✗ go vet found issues — fix before committing."
+  exit 1
+fi

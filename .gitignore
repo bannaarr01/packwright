@@ -30,4 +30,9 @@ go.work.sum
 /build/bin/
 /packwright-v*
 /packwright.app/
-/wails-dev-launcher*.pnggui/web/package.json.md5
+/wails-dev-launcher*.png
+gui/web/package.json.md5
+
+# Husky / root tooling. The root package.json exists only to hang Husky off
+# `npm install`; its node_modules is dev-only and never bundled.
+/node_modules/
