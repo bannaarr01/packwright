@@ -12,3 +12,9 @@ type paletteSelectedMsg struct {
 	Slash string
 	Title string
 }
+
+// refreshPaletteMsg requests the root model to re-load the palette contents
+// from disk. The Launch path's watcher goroutine sends this through
+// (*tea.Program).Send when a manifest file under one of the watched roots
+// changes, so the user sees their edits reflected without restarting.
+type refreshPaletteMsg struct{}

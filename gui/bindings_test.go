@@ -1,12 +1,14 @@
 package gui
 
 import (
+	"errors"
 	"log/slog"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/bannaarr01/packwright/internal/theme"
+	"github.com/bannaarr01/packwright/pack"
 )
 
 // newTestApp builds an App with a discarding logger so tests do not noise up
@@ -54,13 +56,22 @@ func TestAccountIsPlaceholderUntilWired(t *testing.T) {
 	}
 }
 
-func TestListSlashCommandsMatchesTUIPlaceholders(t *testing.T) {
+func TestListSlashCommandsReadsFromLoadPalette(t *testing.T) {
+	// Stub the package-level seam so the test is hermetic — no real config
+	// home, no filesystem discovery.
+	orig := loadPalette
+	t.Cleanup(func() { loadPalette = orig })
+	loadPalette = func() ([]pack.PaletteEntry, error) {
+		return []pack.PaletteEntry{
+			{Slash: "/restart-api", Title: "Restart API", Source: "user", Scope: pack.ScopeUser},
+			{Slash: "/alb", Title: "ALB (acme)", Source: "acme", Scope: pack.ScopePack},
+		}, nil
+	}
+
 	got := newTestApp().ListSlashCommands()
-	// The two seeded items must match tui/palette.go's placeholderItems
-	// exactly — see the parity requirement in the PR-09 plan.
 	want := []SlashCommand{
-		{Slash: "/example/hello", Title: "Example: hello"},
-		{Slash: "/example/world", Title: "Example: world"},
+		{Slash: "/restart-api", Title: "Restart API"},
+		{Slash: "/alb", Title: "ALB (acme)"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("ListSlashCommands() len = %d, want %d", len(got), len(want))
@@ -72,13 +83,21 @@ func TestListSlashCommandsMatchesTUIPlaceholders(t *testing.T) {
 	}
 }
 
-func TestListSlashCommandsReturnsCopy(t *testing.T) {
-	app := newTestApp()
-	a := app.ListSlashCommands()
-	a[0].Slash = "/mutated"
-	b := app.ListSlashCommands()
-	if b[0].Slash == "/mutated" {
-		t.Error("ListSlashCommands must return a defensive copy; package-level slice was mutated")
+func TestListSlashCommandsToleratesPartialLoad(t *testing.T) {
+	// LoadPalette returns non-nil rows alongside a non-nil error when only
+	// some packs failed; the GUI must still render the healthy rows rather
+	// than failing the RPC.
+	orig := loadPalette
+	t.Cleanup(func() { loadPalette = orig })
+	loadPalette = func() ([]pack.PaletteEntry, error) {
+		return []pack.PaletteEntry{
+			{Slash: "/new-command", Title: "New command", Source: "builtin", Scope: pack.ScopeUser},
+		}, errors.New("one pack failed to parse")
+	}
+
+	got := newTestApp().ListSlashCommands()
+	if len(got) != 1 || got[0].Slash != "/new-command" {
+		t.Fatalf("ListSlashCommands() = %+v, want one /new-command row", got)
 	}
 }
 
