@@ -7,34 +7,7 @@ and the project follows MVP-tagged pre-1.0 versioning (`v0.<mvp>.<patch>-mvp<N>`
 
 ## [Unreleased]
 
-### Added
-- Browseable collapsible sidebar in the GUI: grouped Commands / Packs /
-  Wizards, inline filter, quick-action tiles, AWS-context footer pill.
-  Toggle with <kbd>⌘B</kbd>; collapsed state persisted via `localStorage`.
-- Window-chrome drag rails (`-webkit-app-region: drag`) so the GUI window
-  can be moved under `mac.TitleBarHiddenInset`; minimum size 640×480.
-- Geist Variable + Geist Mono Variable typefaces via `@fontsource-variable`.
-- Husky-managed git hooks at `.husky/`: `pre-commit` (`gofmt`, `go vet`)
-  and `pre-push` (`go test ./...`, `npm run check`).
-- `assets/brand/` — tracked canonical brand pack (wordmark, icon, raster
-  fallbacks) so the project never loses its visual identity to a
-  gitignored design directory.
-- `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`,
-  `.github/PULL_REQUEST_TEMPLATE.md`, `.github/ISSUE_TEMPLATE/*`,
-  `.github/dependabot.yml`, `.github/FUNDING.yml`.
-
-### Changed
-- `gui.SlashCommand` JSON now exposes `source`, `scope`, and `pinned` so
-  the GUI sidebar can group rows by provenance and surface the pin
-  promotion.
-- Unified `Window.go.gui.App` typing in a single `gui/web/src/lib/wails-app.d.ts`
-  so multiple modules calling into the same App object stop conflicting at
-  type-merge time.
-
-### Fixed
-- Svelte 5 keyed-each collision when two palette rows shared the same
-  slash (`/alb` from two packs) caused the list to render as "No matches".
-  Key now combines slash + title.
+_No unreleased changes._
 
 ## [v0.3.0-mvp3] — palette wiring, hot-reload, conflict resolution, sidebar
 
@@ -52,8 +25,35 @@ and the project follows MVP-tagged pre-1.0 versioning (`v0.<mvp>.<patch>-mvp<N>`
   (`USER`, `HOME`, `AWS_PROFILE`, `AWS_REGION`), parse-only validator.
 - Scaffold wizards — `/new-command`, `/new-pack` materialise template
   manifests; appended last in `LoadPalette` output.
+- Browseable collapsible sidebar in the GUI: grouped Commands / Packs /
+  Wizards, inline filter, quick-action tiles, AWS-context footer pill.
+  Toggle with <kbd>⌘B</kbd>; collapsed state persisted via `localStorage`.
+- Window-chrome drag rails (`-webkit-app-region: drag`) so the GUI window
+  can be moved under `mac.TitleBarHiddenInset`; minimum size 640×480.
+- Geist Variable + Geist Mono Variable typefaces via `@fontsource-variable`.
+- Husky-managed git hooks at `.husky/`: `pre-commit` (`gofmt`, `go vet`)
+  and `pre-push` (`go test ./...`, `npm run check`).
+- `assets/brand/` — tracked canonical brand pack (wordmark, icon, raster
+  fallbacks) so the project never loses its visual identity to a
+  gitignored design directory.
+- `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`,
+  `.github/PULL_REQUEST_TEMPLATE.md`, `.github/ISSUE_TEMPLATE/*`,
+  `.github/dependabot.yml`, `.github/FUNDING.yml`.
 - `.mcp.json` registering the Playwright MCP server for AI-assisted GUI
   testing.
+
+### Changed
+- `gui.SlashCommand` JSON now exposes `source`, `scope`, and `pinned` so
+  the GUI sidebar can group rows by provenance and surface the pin
+  promotion.
+- Unified `Window.go.gui.App` typing in a single `gui/web/src/lib/wails-app.d.ts`
+  so multiple modules calling into the same App object stop conflicting at
+  type-merge time.
+
+### Fixed
+- Svelte 5 keyed-each collision when two palette rows shared the same
+  slash (`/alb` from two packs) caused the list to render as "No matches".
+  Key now combines slash + title.
 
 ## [v0.2.0-mvp2] — scaffolders, action runners, forms
 
