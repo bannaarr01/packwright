@@ -67,10 +67,11 @@ defaults:
 
 ## Contributing
 
-Read [AGENTS.md](AGENTS.md) first — it covers conventions, the front-end
-registry pattern, quality gates (`gofmt`, `go vet`, `go test`,
-`npm run check`), the Husky hooks, and the Playwright MCP workflow for
-GUI testing.
+Start with [CONTRIBUTING.md](CONTRIBUTING.md). [AGENTS.md](AGENTS.md)
+covers the deeper conventions — front-end registry pattern, quality
+gates (`gofmt`, `go vet`, `go test`, `npm run check`), Husky hooks, and
+the Playwright MCP workflow for GUI testing. Security reports go through
+[SECURITY.md](SECURITY.md), not public issues.
 
 <p align="center">
   <img src="assets/brand/icon.svg" alt="" width="44">
