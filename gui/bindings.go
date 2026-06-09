@@ -4,15 +4,23 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/bannaarr01/packwright/config"
 	"github.com/bannaarr01/packwright/internal/theme"
+	"github.com/bannaarr01/packwright/pack"
 )
 
 // SlashCommand is one entry returned by ListSlashCommands. The shape mirrors
 // the TUI's paletteItem so future pack-registry routing can swap both
-// front-ends to the real source in one change.
+// front-ends to the real source in one change. Source / Scope / Pinned are
+// the same fields pack.PaletteEntry carries; the sidebar groups rows by
+// them, so dropping any of these would force the frontend to re-derive
+// information the Go side already knows.
 type SlashCommand struct {
-	Slash string `json:"slash"`
-	Title string `json:"title"`
+	Slash  string `json:"slash"`
+	Title  string `json:"title"`
+	Source string `json:"source"`
+	Scope  string `json:"scope"`
+	Pinned bool   `json:"pinned"`
 }
 
 // ThemePayload is the Theme binding's return shape. Tokens carries the same
@@ -24,12 +32,23 @@ type ThemePayload struct {
 	Tokens theme.Tokens `json:"tokens"`
 }
 
-// placeholderSlashCommands is the seed set used until the pack registry is
-// wired into the front-ends. It matches the TUI's tui.placeholderItems
-// verbatim so the two front-ends behave identically in MVP-1.
-var placeholderSlashCommands = []SlashCommand{
-	{Slash: "/example/hello", Title: "Example: hello"},
-	{Slash: "/example/world", Title: "Example: world"},
+// loadPalette is a package-level seam so tests can stub palette discovery
+// without touching the real filesystem. Production code keeps the default
+// (resolve config.Home → pack.LoadPalette); tests assign their own closure
+// in the test setup.
+var loadPalette = func() ([]pack.PaletteEntry, error) {
+	home, err := config.Home()
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		// A malformed config.yaml must not prevent the palette from rendering
+		// the discoverable rows; downgrade to an empty config so LoadPalette
+		// still sees the home directory layout.
+		cfg = &config.Config{}
+	}
+	return pack.LoadPalette(home, cfg.PinnedDefaults)
 }
 
 // Profile returns the AWS profile the user appears to be using. For MVP-1
@@ -61,12 +80,29 @@ func (a *App) Region() string {
 // open. Returns "-" until wired.
 func (a *App) Account() string { return "-" }
 
-// ListSlashCommands returns the palette's data set. In MVP-1 this is two
-// hardcoded items matching the TUI; once the pack registry is wired into
-// the front-ends this method will read from it instead.
+// ListSlashCommands returns the palette's data set sourced from the pack
+// registry (pack.LoadPalette). The frontend re-invokes it on every palette
+// open, so a manifest edit propagates without an explicit reload — the same
+// behaviour the TUI achieves via its manifest watcher. A partial load
+// (e.g. one malformed pack among many) returns the rows that did parse;
+// the error is logged here and not surfaced to the frontend so the palette
+// degrades gracefully.
 func (a *App) ListSlashCommands() []SlashCommand {
-	out := make([]SlashCommand, len(placeholderSlashCommands))
-	copy(out, placeholderSlashCommands)
+	entries, err := loadPalette()
+	if err != nil {
+		a.logger.Warn("gui: palette: partial load", "err", err)
+	}
+	out := make([]SlashCommand, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, SlashCommand{
+			Slash:  e.Slash,
+			Title:  e.Title,
+			Source: e.Source,
+			Scope:  string(e.Scope),
+			Pinned: e.Pinned,
+		})
+	}
+	a.logger.Info("gui: palette: list", "rows", len(out))
 	return out
 }
 

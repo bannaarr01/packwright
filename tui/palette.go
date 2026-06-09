@@ -23,14 +23,6 @@ func (p paletteItem) Description() string { return p.title }
 // FilterValue returns the string the list's fuzzy filter scores against.
 func (p paletteItem) FilterValue() string { return p.slash + " " + p.title }
 
-// placeholderItems is the seed set used until the pack registry lands. It
-// gives the user something to filter and select so the palette is demoable
-// end-to-end on day one.
-var placeholderItems = []list.Item{
-	paletteItem{slash: "/example/hello", title: "Example: hello"},
-	paletteItem{slash: "/example/world", title: "Example: world"},
-}
-
 // palette is the Ctrl+P fuzzy command palette. It wraps a bubbles/list.Model
 // with filtering enabled (the list's default filter is fuzzy via sahilm/fuzzy)
 // and reports user actions back to the root model via the message types in
@@ -40,10 +32,17 @@ type palette struct {
 	keys KeyMap
 }
 
-// newPalette constructs the palette with the production placeholder items.
+// newPalette constructs the palette empty. Production callers immediately
+// follow with SetItems carrying the registry-sourced rows; tests use
+// newPaletteWithItems to inject deterministic data.
 func newPalette(keys KeyMap) palette {
-	return newPaletteWithItems(keys, placeholderItems)
+	return newPaletteWithItems(keys, nil)
 }
+
+// SetItems replaces the palette's contents. The Update loop calls it when a
+// refreshPaletteMsg arrives so hot-reload edits propagate without rebuilding
+// the surrounding list state (filter cursor, window size).
+func (p *palette) SetItems(items []list.Item) { p.list.SetItems(items) }
 
 // newPaletteWithItems constructs a palette pre-seeded with arbitrary items.
 // Tests use it to inject deterministic data; production code goes through

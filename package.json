@@ -1,0 +1,12 @@
+{
+  "name": "packwright-tooling",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Repo-root tooling for Packwright (Husky git hooks). The real Go module lives at the repo root; the real frontend lives in gui/web. This file exists only so Husky can hang off `npm install`.",
+  "scripts": {
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}

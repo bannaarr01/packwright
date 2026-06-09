@@ -1,0 +1,16 @@
+<svg width="136" height="221" viewBox="0 0 136 221" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect y="34" width="136" height="153" rx="4" fill="#E2E8F0"/>
+<rect y="176" width="30" height="45" rx="3" fill="#E2E8F0"/>
+<mask id="path-3-inside-1_3_17" fill="white">
+<rect x="25.0306" y="61" width="84.9693" height="100" rx="3"/>
+</mask>
+<rect x="25.0306" y="61" width="84.9693" height="100" rx="3" fill="#07090F" stroke="black" stroke-width="10" mask="url(#path-3-inside-1_3_17)"/>
+<rect x="-1" y="1" width="77" height="23" rx="4" transform="matrix(-1 0 0 1 102 66)" fill="#F97316" stroke="black" stroke-width="2"/>
+<rect width="25" height="22" rx="5" transform="matrix(-1 0 0 1 80 0)" fill="#F97316"/>
+<rect x="-1" y="1" width="49" height="23" rx="4" transform="matrix(-1 0 0 1 74 98)" fill="#CC5E12" stroke="black" stroke-width="2"/>
+<rect x="-1" y="1" width="27" height="23" rx="4" transform="matrix(-1 0 0 1 52 130)" fill="#AD4F0D" stroke="black" stroke-width="2"/>
+<path d="M118.5 161H103V157L118.5 161Z" fill="#07090F"/>
+<path d="M119 61H103V65L119 61Z" fill="#07090F"/>
+<path d="M126 61H136V63L126 61Z" fill="#07090F"/>
+<path d="M126 161H136V159L126 161Z" fill="#07090F"/>
+</svg>

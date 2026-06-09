@@ -1,0 +1,32 @@
+#!/usr/bin/env sh
+
+# Slow gates — full test sweep plus the frontend type-check. Runs at
+# push time so the commit cycle stays snappy but you can't push a
+# broken branch to origin.
+#
+# Bypass intentionally: `git push --no-verify`.
+
+set -e
+
+# 1. Go test sweep. Race detector is intentionally off here — pre-push
+#    should be fast enough to actually use; -race is for the dev's own
+#    loop on concurrent code (`go test -race ./...`).
+if ! go test ./...; then
+  echo "✗ go test failed — fix before pushing."
+  exit 1
+fi
+
+# 2. Frontend type-check, only when the GUI workspace exists. Skipped
+#    cleanly on a stripped checkout so the hook still works for someone
+#    consuming the repo without the GUI.
+if [ -f gui/web/package.json ]; then
+  if [ ! -d gui/web/node_modules ]; then
+    echo "ℹ gui/web/node_modules missing — skipping svelte-check."
+    echo "  Run: (cd gui/web && npm install) to enable this gate."
+  else
+    if ! (cd gui/web && npm run --silent check); then
+      echo "✗ svelte-check failed — fix before pushing."
+      exit 1
+    fi
+  fi
+fi

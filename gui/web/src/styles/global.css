@@ -8,6 +8,44 @@ html, body, #app {
 
 body {
   margin: 0;
+  font-family: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: 'ss01', 'cv11';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Dot-grid backdrop for the main canvas. Sized to a 22px lattice and tinted
+   into the GitHub-dark border colour so the grid recedes — it's atmosphere,
+   not content. Light-mode shifts the dot tint without changing the lattice. */
+.bg-dot-grid {
+  background-image: radial-gradient(rgba(125, 133, 144, 0.18) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: 0 0;
+}
+.bg-dot-grid-light {
+  background-image: radial-gradient(rgba(48, 54, 61, 0.15) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* Sidebar collapse uses width transitions on a fixed-width column. Setting
+   overflow: hidden on the column keeps text labels from spilling during the
+   width tween. */
+.sidebar-collapse-transition {
+  transition: width 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Hide scrollbar inside the sidebar list while keeping it scrollable —
+   chrome we don't need on a desktop app. */
+.scrollbar-hairline::-webkit-scrollbar {
+  width: 6px;
+}
+.scrollbar-hairline::-webkit-scrollbar-thumb {
+  background: rgba(125, 133, 144, 0.25);
+  border-radius: 3px;
+}
+.scrollbar-hairline::-webkit-scrollbar-thumb:hover {
+  background: rgba(125, 133, 144, 0.45);
+}
+.scrollbar-hairline::-webkit-scrollbar-track {
+  background: transparent;
 }

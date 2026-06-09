@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { EventsOn } from '../../wailsjs/wailsjs/runtime/runtime';
   import { api, type SlashCommand } from '../api';
 
   // cmdk-style fuzzy command palette. Mirrors the TUI's palette.go:
@@ -7,8 +8,11 @@
   //   - filters fuzzy over slash + title
   //   - Enter selects, Esc closes (when filter empty), arrows navigate
   //
-  // The data source is api.listSlashCommands() — currently two hardcoded
-  // items in the Go binding, matching tui.placeholderItems.
+  // The data source is api.listSlashCommands(), which reads from the pack
+  // registry (pack.LoadPalette) on the Go side. The Go bridge also emits
+  // `packwright:palette-changed` whenever a manifest under one of the
+  // watched roots is edited — we subscribe to it here so the palette
+  // refreshes live without the user having to close + reopen.
 
   interface Props {
     onClose: () => void;
@@ -20,10 +24,32 @@
   let items = $state<SlashCommand[]>([]);
   let activeIndex = $state(0);
   let inputEl: HTMLInputElement | undefined = $state();
+  // Diagnostic: capture the last fetch outcome so we can see it in the
+  // window without needing DevTools or stderr capture. Remove after the
+  // GUI palette is confirmed wired end-to-end.
+  let debugStatus = $state<string>('idle');
 
-  onMount(async () => {
-    items = await api.listSlashCommands();
+  async function refresh() {
+    try {
+      const fresh = await api.listSlashCommands();
+      items = fresh ?? [];
+      debugStatus = `loaded ${items.length} rows`;
+    } catch (err) {
+      debugStatus = `ERROR: ${err instanceof Error ? err.message : String(err)}`;
+      console.error('Packwright GUI: listSlashCommands failed', err);
+    }
+  }
+
+  onMount(() => {
+    refresh();
     inputEl?.focus();
+    // EventsOn returns an unregister function. Wails' runtime always exists
+    // when this component renders inside the webview; the cleanup is still
+    // important so a closing palette stops re-fetching in the background.
+    const off = EventsOn('packwright:palette-changed', () => {
+      refresh();
+    });
+    return () => off?.();
   });
 
   // fuzzyScore returns a non-negative score when every character of `q`
@@ -122,8 +148,11 @@
     autocomplete="off"
     spellcheck="false"
   />
+  <div class="px-4 py-1 text-xs opacity-50 border-b border-light-border dark:border-dark-border">
+    debug: {debugStatus}
+  </div>
   <ul class="max-h-80 overflow-y-auto py-1" role="listbox">
-    {#each filtered as item, i (item.slash)}
+    {#each filtered as item, i (item.slash + '|' + item.title)}
       <li role="presentation">
         <button
           type="button"

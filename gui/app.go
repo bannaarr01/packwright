@@ -34,6 +34,12 @@ type App struct {
 	bridgeStop context.CancelFunc
 	bridgeWG   sync.WaitGroup
 
+	// watcherStop tears down the manifest-watcher bridge spawned by startup
+	// (see startPaletteWatcher). Nil when no watcher was started. shutdown
+	// invokes it before bridgeWG.Wait so the watcher goroutine exits before
+	// the runtime tears down its event subsystem.
+	watcherStop func()
+
 	// quit is the function invoked when the cobra ctx fires before the user
 	// closes the window. Defaults to runtime.Quit; tests inject a fake so
 	// the bridge lifecycle can be verified without a live Wails runtime.
@@ -53,15 +59,23 @@ func newApp(logger *slog.Logger) *App {
 
 // startup is invoked by Wails once the webview is ready. It captures the
 // Wails runtime ctx (needed for runtime.Quit) and — if Launch attached a
-// parent ctx — spawns the shutdown bridge.
+// parent ctx — spawns the shutdown bridge and the manifest-watcher bridge.
 //
-// The bridge runs only here, never before, so the goroutine always has a
-// valid wailsCtx to hand to quit. That avoids the race where the cobra ctx
-// fires before Wails finishes initialising and the bridge would otherwise
-// have nothing to quit with.
+// The bridges run only here, never before, so each goroutine always has a
+// valid wailsCtx to hand to quit / EventsEmit. That avoids the race where
+// the cobra ctx fires before Wails finishes initialising and the bridges
+// would otherwise have nothing to call against.
 func (a *App) startup(wailsCtx context.Context) {
 	a.wailsCtx = wailsCtx
 	a.logger.Info("gui startup")
+	// Diagnostic: pre-warm the palette and log the row count so we can confirm
+	// what the binding would return without waiting for the frontend to call
+	// it. Cheap (one Discover walk + slice copy) and runs once per launch.
+	probe := a.ListSlashCommands()
+	a.logger.Info("gui startup: palette probe", "rows", len(probe))
+	for _, sc := range probe {
+		a.logger.Info("gui startup: palette row", "slash", sc.Slash, "title", sc.Title)
+	}
 	if a.parentCtx == nil {
 		return
 	}
@@ -80,6 +94,8 @@ func (a *App) startup(wailsCtx context.Context) {
 			quitFn(wailsCtx)
 		}
 	}()
+
+	a.startPaletteWatcher(bridgeCtx)
 }
 
 // shutdown is invoked by Wails just before the runtime tears down. It
@@ -90,6 +106,10 @@ func (a *App) shutdown(_ context.Context) {
 		a.bridgeStop()
 		a.bridgeWG.Wait()
 		a.bridgeStop = nil
+	}
+	if a.watcherStop != nil {
+		a.watcherStop()
+		a.watcherStop = nil
 	}
 	a.logger.Info("gui shutdown")
 }

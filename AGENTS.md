@@ -149,6 +149,65 @@ mirror what CI (`.github/workflows/ci.yml`) enforces:
 
 Then provide a short manual test checklist for developer-side verification.
 
+## AI-assisted GUI testing (Playwright MCP)
+
+The repo declares the Playwright MCP server in `.mcp.json` (`@playwright/mcp@latest`).
+When Claude Code starts in this repo it will prompt to enable it; approve it once
+and the `mcp__playwright__browser_*` tools become available for the session.
+
+### When to use it
+- Verifying GUI palette behaviour after touching `gui/web/src/**`, `gui/bindings*.go`,
+  `gui/launch.go`, or `pack/palette.go`.
+- Reproducing user-reported visual bugs (the kind of "the app still looks dummy"
+  regression that pure `go test` can't catch — e.g. a Svelte keyed-each
+  collision that renders an empty list).
+- Smoke testing the hot-reload loop: edit a manifest, assert the palette
+  refreshes within ~1s without restart.
+
+### Workflow
+1. Populate a Packwright home with test content (see `scripts/seed-demo-home.sh`).
+2. Start `wails dev` — the Svelte frontend serves at `http://localhost:34115`
+   with Chrome DevTools Protocol enabled. Run it in the background so Claude
+   can drive the page:
+   ```bash
+   wails dev > /tmp/wails-dev.log 2>&1 &
+   ```
+3. Have Claude drive Playwright:
+   - `mcp__playwright__browser_navigate` → `http://localhost:34115`
+   - `mcp__playwright__browser_press_key` → `Meta+k` (open palette)
+   - `mcp__playwright__browser_type` → filter query
+   - `mcp__playwright__browser_snapshot` → ARIA tree of the palette
+   - `mcp__playwright__browser_console_messages` → catch JS errors
+   - `mcp__playwright__browser_evaluate` → run arbitrary JS, e.g. inspect
+     `window.go.gui.App` to verify Wails bindings exist
+4. Edit a manifest on disk while the palette is open; snapshot again to
+   confirm the `packwright:palette-changed` event refreshed the rows.
+
+### Caveats
+- `wails dev` serves the frontend in a browser context, so the Wails bindings
+  (`window.go.gui.App.*`) are injected by the Wails dev runtime. The bindings
+  ARE available — `wails dev` proxies RPC calls through a local websocket.
+  This is the same posture the live Wails webview uses.
+- For pure-UI tests (no Go round-trip), stub `window.go` via
+  `browser_evaluate` before the test runs.
+- The Playwright MCP can't drive the packaged `.app` directly — it needs the
+  CDP endpoint, which only `wails dev` exposes.
+
+## Git hooks (Husky)
+
+The repo ships Husky-managed hooks at `.husky/`. Run `npm install` once at the
+repo root after cloning — that installs Husky (the only dep in the root
+`package.json`) and points `core.hooksPath` at `.husky/_`.
+
+- `pre-commit` → `gofmt -l .` and `go vet ./...`. Fails the commit if either
+  is unclean. Fix with `gofmt -w .`.
+- `pre-push` → `go test ./...` and (when `gui/web/node_modules` exists)
+  `npm run check` inside `gui/web/`.
+
+Both are fast paths to the gates `AGENTS.md` already requires. Bypass with
+`git commit --no-verify` / `git push --no-verify` when you genuinely need
+to (e.g. an empty docs-only commit on a hook-edit branch).
+
 ## Code Style
 - **Formatting is non-negotiable**: `gofmt` is the law (tabs for indentation,
   gofmt's canonical layout). `gofmt -l .` must return empty. Configure your editor
