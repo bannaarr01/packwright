@@ -1,19 +1,39 @@
 <script lang="ts">
-  // The MVP-1 launcher screen. Mirrors the TUI's launcher.go: a short
-  // instruction line pointing at the palette keybinding. Real launcher
-  // content (recent packs, quick actions) arrives in a later PR.
+  // Idle-state landing for the canvas. The cmdk palette is the primary
+  // input — this view exists to (1) tell a first-time user what ⌘K does
+  // and (2) give the canvas a visual anchor when no palette is open.
   import logoUrl from '../../assets/logo.svg';
 </script>
 
-<div class="h-full flex items-center justify-center">
-  <div class="text-center space-y-4">
-    <img src={logoUrl} alt="Packwright" class="mx-auto w-40 h-auto" />
-    <div class="opacity-70">
-      Press <kbd
-        class="px-1.5 py-0.5 rounded font-mono text-sm bg-light-border/40 dark:bg-dark-border/40"
-        >⌘K</kbd
-      >
-      to open the command palette.
+<div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+  <div class="text-center space-y-6 max-w-md px-6">
+    <!-- Wordmark — slightly faded so it sits with the grid rather than on top of it. -->
+    <img src={logoUrl} alt="Packwright" class="mx-auto w-40 h-auto opacity-90" />
+
+    <div class="space-y-3">
+      <p class="text-[13px] text-dark-fg/55 font-mono tracking-tight">
+        Scaffold and manage AWS infrastructure templates.
+      </p>
+
+      <p class="text-[12.5px] text-dark-fg/50 flex items-center justify-center gap-2">
+        <span>Press</span>
+        <kbd
+          class="px-2 py-0.5 rounded-md font-mono text-[11px]
+                 bg-dark-border/35 border border-dark-border/70
+                 shadow-[inset_0_-1px_0_rgba(0,0,0,0.35)]"
+        >
+          ⌘K
+        </kbd>
+        <span>to open the palette,</span>
+        <kbd
+          class="px-2 py-0.5 rounded-md font-mono text-[11px]
+                 bg-dark-border/35 border border-dark-border/70
+                 shadow-[inset_0_-1px_0_rgba(0,0,0,0.35)]"
+        >
+          ⌘B
+        </kbd>
+        <span>to toggle the sidebar.</span>
+      </p>
     </div>
   </div>
 </div>

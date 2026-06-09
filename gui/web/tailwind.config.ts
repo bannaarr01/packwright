@@ -22,8 +22,22 @@ const config: Config = {
         dark,
       },
       fontFamily: {
-        sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+        // Geist Variable pairs cleanly with Geist Mono — refined dev-tool
+        // typography, deliberately not Inter/Roboto. The system-font tail is
+        // a safety net for the rare offline boot before the font loads.
+        sans: ['"Geist Variable"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: [
+          '"Geist Mono Variable"',
+          'ui-monospace',
+          'SFMono-Regular',
+          'Menlo',
+          'monospace',
+        ],
+      },
+      letterSpacing: {
+        // Sidebar section labels — caps + tracked = nav chrome without
+        // screaming for attention.
+        micro: '0.14em',
       },
     },
   },

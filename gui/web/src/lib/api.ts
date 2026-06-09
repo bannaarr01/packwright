@@ -11,6 +11,14 @@
 export interface SlashCommand {
   slash: string;
   title: string;
+  // Provenance of the row. `"user"` for the user scope, `"builtin"` for the
+  // wizard manifests, otherwise the pack name. The sidebar groups on this.
+  source: string;
+  // `"user"` or `"pack"` — mirrors pack.Scope on the Go side.
+  scope: string;
+  // True for the row promoted to first by Config.PinnedDefaults inside a
+  // colliding slash group.
+  pinned: boolean;
 }
 
 export interface ThemeTokens {
@@ -32,19 +40,15 @@ export interface ThemePayload {
   tokens: ThemeTokens;
 }
 
-interface WailsBindings {
+// Exported so wails-app.d.ts can intersect it with ProfileBindings into the
+// single canonical Window.go.gui.App typing.
+export interface WailsBindings {
   Profile(): Promise<string>;
   Region(): Promise<string>;
   Account(): Promise<string>;
   ListSlashCommands(): Promise<SlashCommand[]>;
   Theme(): Promise<ThemePayload>;
   SelectSlashCommand(sc: SlashCommand): Promise<void>;
-}
-
-declare global {
-  interface Window {
-    go?: { gui?: { App?: WailsBindings } };
-  }
 }
 
 // bindings reaches the Wails App methods at runtime. It throws if Wails has

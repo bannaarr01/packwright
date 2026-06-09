@@ -1,0 +1,26 @@
+{{- /* README.md — pack-level documentation seed. */ -}}
+# {{ .Name }}
+
+{{ if .Description }}{{ .Description }}{{ else }}A Packwright pack scaffolded with `/new-pack`.{{ end }}
+
+## Layout
+
+```
+{{ .Name }}/
+  pack.yaml        # pack metadata (name, version, description, requires)
+  manifests/       # one YAML manifest per slash command
+  templates/       # CFN/IaC templates referenced by resource manifests
+  commands/        # optional pack-scoped custom commands
+  monitors/        # optional dashboards
+  README.md        # this file
+```
+
+## Authoring a command
+
+Run `/new-command` inside Packwright and choose this pack as the save
+location. The wizard collects the kind, slash, title, and form fields and
+drops a canonical YAML file into `manifests/`.
+
+## License
+
+Add a LICENSE file at the pack root before publishing.

@@ -5,6 +5,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -17,6 +18,12 @@ const (
 	modePalette
 )
 
+// paletteLoader is the source of palette rows the root model consults at
+// startup and whenever a refreshPaletteMsg arrives. Launch supplies a real
+// loader that calls pack.LoadPalette; tests pass nil or a stub so the root
+// model stays independent of the discovery side effects.
+type paletteLoader func() []list.Item
+
 // app is the root tea.Model. It owns the keymap, help row, and per-screen
 // sub-models, and routes incoming messages to the active screen.
 type app struct {
@@ -28,11 +35,15 @@ type app struct {
 	palette  palette
 	width    int
 	height   int
+	loadPal  paletteLoader
 }
 
 // newApp constructs the root model. The logger receives palette-selection
 // events; passing nil disables those log lines but is otherwise harmless.
-func newApp(logger *slog.Logger) app {
+// loader is consulted on startup (via the initial Init command) and on
+// every refreshPaletteMsg; pass nil to start with an empty palette (the
+// posture used by unit tests that exercise only key handling).
+func newApp(logger *slog.Logger, loader paletteLoader) app {
 	keys := DefaultKeyMap()
 	return app{
 		keys:    keys,
@@ -40,11 +51,19 @@ func newApp(logger *slog.Logger) app {
 		logger:  logger,
 		mode:    modeLauncher,
 		palette: newPalette(keys),
+		loadPal: loader,
 	}
 }
 
-// Init satisfies tea.Model. The root has no startup command.
-func (a app) Init() tea.Cmd { return nil }
+// Init satisfies tea.Model. When a loader is configured, the root issues a
+// single refreshPaletteMsg so the first frame renders against the real
+// registry instead of an empty palette.
+func (a app) Init() tea.Cmd {
+	if a.loadPal == nil {
+		return nil
+	}
+	return func() tea.Msg { return refreshPaletteMsg{} }
+}
 
 // Update implements tea.Model. The dispatch policy is:
 //  1. tea.WindowSizeMsg → propagate to every sub-model.
@@ -75,6 +94,12 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				slog.String("title", m.Title))
 		}
 		a.mode = modeLauncher
+		return a, nil
+
+	case refreshPaletteMsg:
+		if a.loadPal != nil {
+			a.palette.SetItems(a.loadPal())
+		}
 		return a, nil
 
 	case tea.KeyMsg:

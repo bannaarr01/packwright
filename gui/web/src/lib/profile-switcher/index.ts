@@ -29,16 +29,14 @@ export interface SwitchResult {
   suggested?: string[];
 }
 
-interface ProfileBindings {
+// Exported so wails-app.d.ts can intersect it with WailsBindings into the
+// single canonical Window.go.gui.App typing. The previous local
+// `declare global` here conflicted with lib/api.ts's parallel declaration
+// — TypeScript merges interfaces but requires matching property types.
+export interface ProfileBindings {
   ListProfiles(): Promise<ProfileEntry[]>;
   SwitchProfile(profile: string, region: string): Promise<SwitchResult>;
   VerifyCurrent(): Promise<SwitchResult>;
-}
-
-declare global {
-  interface Window {
-    go?: { gui?: { App?: ProfileBindings & Record<string, unknown> } };
-  }
 }
 
 // bindings reaches the App methods at runtime. Mirrors lib/api.ts's pattern so

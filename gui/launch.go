@@ -29,9 +29,11 @@ func Launch(ctx context.Context) error {
 	app.parentCtx = ctx
 
 	err := wails.Run(&options.App{
-		Title:  "Packwright",
-		Width:  1024,
-		Height: 720,
+		Title:     "Packwright",
+		Width:     1100,
+		Height:    760,
+		MinWidth:  640,
+		MinHeight: 480,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -39,6 +41,11 @@ func Launch(ctx context.Context) error {
 		OnShutdown: app.shutdown,
 		Bind:       []interface{}{app},
 		Mac: &mac.Options{
+			// TitleBarHiddenInset hides the native title bar but keeps the
+			// traffic lights inset into the chrome. With the title bar hidden
+			// the frontend must designate a draggable region via
+			// -webkit-app-region: drag — App.svelte / Sidebar.svelte do this
+			// on a thin rail across the top.
 			TitleBar: mac.TitleBarHiddenInset(),
 		},
 		Windows: &windows.Options{},
