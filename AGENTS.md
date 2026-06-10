@@ -116,7 +116,7 @@ IMPORTANT:
 - Default action (no args): launch the TUI front-end.
 - `--gui`: launch the GUI front-end instead of the TUI.
 - `--version` / `-v`: print the version (defaults to `dev`; override at build time
-  via `-ldflags "-X github.com/bannaarr01/packwright/cmd.version=<v>"`).
+  via `-ldflags "-X github.com/bannaarr01/packwright/meta.Version=<v>"`).
 - `--help` / `-h`: usage. Unexpected positional args are rejected (`cobra.NoArgs`).
 - Exit codes: `0` on success; `1` when a command returns an error (e.g. a
   front-end that isn't linked into the build).
@@ -136,7 +136,7 @@ go mod tidy                 # sync go.mod / go.sum with imports
 go mod verify               # verify module checksums
 
 # Release build with an embedded version:
-go build -ldflags "-X github.com/bannaarr01/packwright/cmd.version=v1.2.3" -o packwright .
+go build -ldflags "-X github.com/bannaarr01/packwright/meta.Version=v1.2.3" -o packwright .
 ```
 
 ## Verification Policy

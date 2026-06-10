@@ -5,6 +5,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/bannaarr01/packwright/meta"
 )
 
 // Both TUILauncher and GUILauncher are wired in at link time by cmd_tui.go
@@ -77,7 +79,7 @@ func TestVersionFlag(t *testing.T) {
 		t.Fatalf("Execute() error = %v, want nil", err)
 	}
 	got := out.String()
-	if !strings.Contains(got, "packwright") || !strings.Contains(got, version) {
-		t.Fatalf("--version output = %q, want it to contain %q and %q", got, "packwright", version)
+	if !strings.Contains(got, "packwright") || !strings.Contains(got, meta.Version) {
+		t.Fatalf("--version output = %q, want it to contain %q and %q", got, "packwright", meta.Version)
 	}
 }
