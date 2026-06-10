@@ -1,0 +1,52 @@
+name: License Scan
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: go-licenses allowlist
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install go-licenses
+        run: go install github.com/google/go-licenses@v1.6.0
+
+      # Allowlist per ADR-0032: Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause,
+      # ISC, MPL-2.0. Anything else is a hard fail and needs an ADR.
+      - name: Scan dependencies
+        run: |
+          set -euo pipefail
+          tpl="$(mktemp)"
+          printf '{{range .}}{{.Name}}\t{{.LicenseName}}\n{{end}}' > "$tpl"
+
+          report="$(go-licenses report ./... --template "$tpl" 2>/tmp/go-licenses.stderr)"
+          echo "=== go-licenses report ==="
+          echo "$report"
+          echo "=========================="
+
+          allowed='^(Apache-2\.0|MIT|BSD-2-Clause|BSD-3-Clause|ISC|MPL-2\.0)$'
+          violations="$(printf '%s\n' "$report" | awk -F'\t' -v re="$allowed" 'NF==2 && $2 !~ re { print }')"
+
+          if [ -n "$violations" ]; then
+            echo "::error::License violation(s) detected. Dependencies use a license not on the allowlist (ADR-0032)."
+            printf '%s\n' "$violations" | while IFS=$'\t' read -r mod lic; do
+              echo "::error::  $mod uses $lic"
+            done
+            exit 1
+          fi
+
+          echo "All dependency licenses are on the allowlist."
