@@ -4,13 +4,9 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-)
 
-// version is the Packwright build version. It defaults to "dev" for local
-// builds and is overridden at release time via the linker, e.g.:
-//
-//	go build -ldflags "-X github.com/bannaarr01/packwright/cmd.version=v1.2.3"
-var version = "dev"
+	"github.com/bannaarr01/packwright/meta"
+)
 
 // newRootCmd constructs the root cobra command. It is a constructor rather than
 // a package-level singleton so that tests can build isolated command trees. The
@@ -27,7 +23,7 @@ managing AWS infrastructure templates.
 
 Run without arguments to launch the interactive terminal UI (TUI), or pass
 --gui to launch the graphical UI (GUI).`,
-		Version:       version,
+		Version:       meta.Version,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true, // a failing launcher is a runtime error, not a usage error
 		SilenceErrors: false,
