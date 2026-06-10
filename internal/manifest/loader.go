@@ -50,6 +50,9 @@ func Load(path string) (*Manifest, error) {
 		return nil, fmt.Errorf("manifest: decode %s: %w", path, err)
 	}
 
+	if err := schemaVersionCheck(&m); err != nil {
+		return nil, fmt.Errorf("manifest: %s: %w", path, err)
+	}
 	if err := Validate(&m); err != nil {
 		return nil, fmt.Errorf("manifest: validate %s: %w", path, err)
 	}

@@ -1,0 +1,67 @@
+# appimage-builder recipe for Packwright (consumed by the release workflow).
+#
+# The Linux build step in .github/workflows/release.yml stages an AppDir at
+# $APPDIR (defaulting to $GITHUB_WORKSPACE/AppDir) with the Go binary, icon,
+# desktop entry, and AppRun launcher already in place. appimage-builder
+# wraps that AppDir, generates the runtime, and emits the .AppImage.
+#
+# Env vars referenced via {{ ... }} (Jinja2-style):
+#   VERSION     — the release version (e.g. 1.2.3), no leading "v".
+#   TARGET_ARCH — "amd64" or "arm64" (Go arch name).
+#
+# If appimage-builder is unavailable on the runner, the workflow falls back
+# to plain appimagetool over the same AppDir.
+
+version: 1
+
+script:
+  # appimage-builder will copy/skip work since the workflow pre-built AppDir.
+  - echo "AppDir prepared by release workflow at $APPDIR"
+
+AppDir:
+  # The Linux release job pre-stages AppDir at $APPDIR (an absolute path under
+  # the GitHub Actions workspace) and points the recipe at it via !ENV.
+  path: !ENV "${APPDIR}"
+
+  app_info:
+    id: io.packwright.app
+    name: Packwright
+    icon: packwright
+    version: !ENV "${VERSION}"
+    exec: usr/bin/packwright
+    # Linux ships the TUI front-end via AppImage for v1. The CGO-linked
+    # Wails GUI on Linux is a follow-up (GTK / WebKit version churn on
+    # Ubuntu 24). See packaging/README.md.
+    exec_args: "$@"
+
+  apt:
+    arch: !ENV "${TARGET_ARCH}"
+    sources:
+      - sourceline: 'deb http://archive.ubuntu.com/ubuntu/ jammy main universe'
+      - sourceline: 'deb http://archive.ubuntu.com/ubuntu/ jammy-updates main universe'
+    include: []
+    exclude: []
+
+  files:
+    exclude:
+      - usr/share/man
+      - usr/share/doc/*/README.*
+      - usr/share/doc/*/changelog.*
+      - usr/share/doc/*/NEWS.*
+      - usr/share/doc/*/TODO.*
+
+  runtime:
+    env:
+      APPDIR_LIBRARY_PATH: '$APPDIR/usr/lib'
+
+  test:
+    fedora:
+      image: appimagecrafters/tests-env:fedora-30
+      command: "./AppRun --version"
+      use_host_x: false
+
+AppImage:
+  arch: !ENV "${TARGET_ARCH}"
+  update-information: |
+    gh-releases-zsync|bannaarr01|packwright|latest|packwright-*-linux-{{ TARGET_ARCH }}.AppImage.zsync
+  sign-key: None
