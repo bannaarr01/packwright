@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/bannaarr01/packwright/bootstrap"
 	"github.com/bannaarr01/packwright/config"
 	"github.com/bannaarr01/packwright/internal/manifest"
 	"github.com/bannaarr01/packwright/pack"
@@ -33,7 +33,7 @@ import (
 // A failure to resolve the home directory or to start the watcher is
 // non-fatal: the TUI still launches, just without live palette data.
 func Launch(ctx context.Context) error {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := bootstrap.Init("tui")
 
 	loader := buildPaletteLoader(logger)
 	p := tea.NewProgram(newApp(logger, loader), tea.WithContext(ctx), tea.WithAltScreen())
