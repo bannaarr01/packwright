@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  Source of truth for packaging-layer Info.plist keys that wails.json
+  doesn't expose (bundle identifier, application category, copyright,
+  minimum OS). The release workflow applies these keys to the produced
+  .app bundle via `plutil -replace` before codesign — Wails' own
+  template at build/darwin/Info.plist remains canonical for everything
+  else. {{.Info.ProductVersion}} tokens are placeholders Wails fills in.
+-->
+<dict>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleName</key>
+    <string>Packwright</string>
+    <key>CFBundleDisplayName</key>
+    <string>Packwright</string>
+    <key>CFBundleExecutable</key>
+    <string>packwright</string>
+    <key>CFBundleIdentifier</key>
+    <string>io.packwright.app</string>
+    <key>CFBundleVersion</key>
+    <string>{{.Info.ProductVersion}}</string>
+    <key>CFBundleShortVersionString</key>
+    <string>{{.Info.ProductVersion}}</string>
+    <key>CFBundleGetInfoString</key>
+    <string>Packwright — hybrid TUI + GUI for AWS infrastructure templates</string>
+    <key>CFBundleIconFile</key>
+    <string>iconfile</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>10.15.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.developer-tools</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>Apache-2.0 — see LICENSE</string>
+    <!-- The TUI is the same binary; the .app launches the GUI front-end. -->
+    <key>NSSupportsAutomaticTermination</key>
+    <true/>
+    <key>NSSupportsSuddenTermination</key>
+    <true/>
+</dict>
+</plist>
