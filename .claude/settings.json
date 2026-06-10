@@ -1,0 +1,11 @@
+{
+  "model": "claude-opus-4-7",
+  "permissions": {
+    "allow": [
+      "Bash(scripts/tmux-multi-claude.sh:*)",
+      "Bash(./scripts/tmux-multi-claude.sh:*)",
+      "Bash(scripts/spawn-worktrees.sh:*)",
+      "Bash(./scripts/spawn-worktrees.sh:*)"
+    ]
+  }
+}
