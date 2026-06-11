@@ -11,6 +11,13 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/bannaarr01/packwright/manifest"
+
+	// pkgcheck aliases internal/pack to avoid a name collision with this
+	// outer pack package. It owns the SemVer-comparator + schema-major
+	// gate that ADR-0028 specifies; loadPack invokes it before returning
+	// a Pack so a requires mismatch is reported as a typed error rather
+	// than discovered later by the runner.
+	pkgcheck "github.com/bannaarr01/packwright/internal/pack"
 )
 
 // packsSubdir is the directory under homeDir that holds installed packs.
@@ -72,10 +79,21 @@ func LoadUserScope(homeDir string) (*Pack, error) {
 // fully populated *Pack. Errors are wrapped with the offending file path so
 // the discovery error chain points at the broken file without further
 // inspection.
+//
+// Between meta parse and manifest load we run the ADR-0028 requires gate
+// (pkgcheck.Check). A pack whose pack.yaml declares an incompatible
+// requires.packwright or requires.packwright.manifest constraint is
+// rejected here with a typed *pkgcheck.RequiresError so callers may render
+// the ADR-0028 remediation block — there is no point parsing manifests
+// the running binary cannot interpret.
 func loadPack(dir string) (*Pack, error) {
 	meta, err := loadPackMeta(filepath.Join(dir, "pack.yaml"))
 	if err != nil {
 		return nil, err
+	}
+
+	if err := pkgcheck.Check(meta.Name, meta.Requires, pkgcheck.CheckOptions{}); err != nil {
+		return nil, fmt.Errorf("pack %q at %q: %w", meta.Name, dir, err)
 	}
 
 	manifests, err := loadManifests(filepath.Join(dir, "manifests"))
