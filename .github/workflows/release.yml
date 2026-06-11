@@ -59,7 +59,14 @@ jobs:
             *-test-*) is_test="true" ;;
             *)        is_test="false" ;;
           esac
-          ldflags="-s -w -X github.com/bannaarr01/packwright/cmd.version=${tag}"
+          # Two version sources need to be overridden:
+          #   - meta.Version: read by cmd/root.go (--version), pack/discover.go,
+          #     and action/dispatch (usage events).
+          #   - internal/version.Version: read by internal/pack.Check (the
+          #     pack.yaml requires gate).
+          # Folding these into one variable is tracked separately; for now the
+          # release must set both or the requires gate will see "dev" at runtime.
+          ldflags="-s -w -X github.com/bannaarr01/packwright/meta.Version=${tag} -X github.com/bannaarr01/packwright/internal/version.Version=${tag}"
           {
             echo "tag=${tag}"
             echo "version=${version}"
