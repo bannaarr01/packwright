@@ -260,12 +260,35 @@ func TestDispatch_RecordingFailureDoesNotPropagate(t *testing.T) {
 	}
 }
 
-// TestSurfaceFromContextDefault confirms an absent surface is recorded
-// as the empty string — not panicked-on, not defaulted to a hardcoded
-// value that would mis-attribute records to one front-end.
+// TestSurfaceFromContextDefault confirms an absent ctx-bound surface
+// falls back to the value SetDefaultSurface recorded — bootstrap sets
+// that at startup so usage events are tagged with the running surface
+// even before per-call dispatch.WithSurface plumbing exists. With the
+// default unset the function returns the empty string, matching the
+// pre-SetDefaultSurface contract.
 func TestSurfaceFromContextDefault(t *testing.T) {
+	t.Cleanup(func() { SetDefaultSurface("") })
+
+	// Empty default: legacy behaviour.
+	SetDefaultSurface("")
 	if got := surfaceFromContext(context.Background()); got != "" {
-		t.Errorf("surfaceFromContext on bare ctx = %q, want empty", got)
+		t.Errorf("surfaceFromContext with empty default = %q, want empty", got)
+	}
+
+	// Bootstrap-style default: callers without WithSurface get the
+	// running surface.
+	SetDefaultSurface(usage.SurfaceTUI)
+	if got := surfaceFromContext(context.Background()); got != usage.SurfaceTUI {
+		t.Errorf("surfaceFromContext with default=%q on bare ctx = %q",
+			usage.SurfaceTUI, got)
+	}
+
+	// Explicit WithSurface still wins over the default.
+	SetDefaultSurface(usage.SurfaceTUI)
+	ctx := WithSurface(context.Background(), usage.SurfaceGUI)
+	if got := surfaceFromContext(ctx); got != usage.SurfaceGUI {
+		t.Errorf("surfaceFromContext with WithSurface=%q over default=%q = %q",
+			usage.SurfaceGUI, usage.SurfaceTUI, got)
 	}
 }
 

@@ -59,17 +59,35 @@ func awsClientFromContext(ctx context.Context) *awsx.Client {
 // (typically usage.SurfaceTUI or usage.SurfaceGUI). The surface is read
 // back by Dispatch when emitting a usage event so the local usage log
 // can attribute each command invocation to the surface that triggered
-// it. When unset, the recorded surface is the empty string — informative
-// rather than fatal.
+// it. When unset, Dispatch falls back to the value SetDefaultSurface
+// recorded — bootstrap registers the running surface there once at
+// startup so usage events are tagged even before every dispatch call
+// site has been refactored to thread WithSurface explicitly.
 func WithSurface(ctx context.Context, s usage.Surface) context.Context {
 	return context.WithValue(ctx, surfaceKey{}, s)
 }
 
+// defaultSurface holds the surface label bootstrap recorded at startup.
+// It is read by surfaceFromContext as the fallback when the context
+// carries no WithSurface value. Concurrent writes are not supported —
+// bootstrap.Init runs once before any dispatch.Dispatch call.
+var defaultSurface usage.Surface
+
+// SetDefaultSurface records the running front-end's surface label so
+// Dispatch can stamp usage events even when callers have not threaded
+// dispatch.WithSurface through their ctx. bootstrap.Init invokes this
+// from each front-end's startup path; tests reset it via the same call
+// when they need a deterministic baseline.
+func SetDefaultSurface(s usage.Surface) { defaultSurface = s }
+
 // surfaceFromContext returns the usage.Surface previously bound with
-// WithSurface, or the empty Surface if none was set.
+// WithSurface; if none was set, it returns the value SetDefaultSurface
+// recorded (typically the running front-end's surface label).
 func surfaceFromContext(ctx context.Context) usage.Surface {
-	s, _ := ctx.Value(surfaceKey{}).(usage.Surface)
-	return s
+	if s, ok := ctx.Value(surfaceKey{}).(usage.Surface); ok && s != "" {
+		return s
+	}
+	return defaultSurface
 }
 
 // recordUsage is the seam through which Dispatch emits a UsageEvent.

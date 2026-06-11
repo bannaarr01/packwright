@@ -37,6 +37,16 @@ type Config struct {
 	// AI is reserved for AI-related settings; treated as opaque YAML until
 	// later MVPs give it a schema.
 	AI map[string]any `yaml:"ai"`
+	// DisableUpdateCheck suppresses the launch-time GitHub Releases probe
+	// (internal/update). When true, no outbound HTTP request is made.
+	// PACKWRIGHT_NO_UPDATE_CHECK=1 has the same effect and is honoured
+	// regardless of this field. See ADR-0030.
+	DisableUpdateCheck bool `yaml:"disable_update_check"`
+	// UpdateChannel selects whether the update check considers stable or
+	// pre-release tags. Recognised values: "stable" (default), "prerelease".
+	// An empty string is treated as "stable" so existing config.yaml files
+	// keep working. See ADR-0030.
+	UpdateChannel string `yaml:"update_channel"`
 }
 
 // Load reads <Home>/config.yaml and returns the parsed Config. When no file
