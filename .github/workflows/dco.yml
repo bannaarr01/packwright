@@ -44,6 +44,12 @@ jobs:
           echo "Checking commits in range: ${range}"
 
           failed=0
+          # --no-merges skips GitHub-generated "Merge pull request #N" commits.
+          # The DCO certifies the *content* of a contribution, and merge commits
+          # contribute no new content — they are integration artefacts produced
+          # by the GitHub UI, which cannot add a Signed-off-by trailer. This
+          # matches the canonical DCO bot behaviour (probot/dco) and the
+          # cncf/foundation guidance: only non-merge commits are gated.
           while read -r sha; do
             [ -z "$sha" ] && continue
             msg="$(git log -1 --format=%B "$sha")"
@@ -58,7 +64,7 @@ jobs:
               echo "::error::Run \`git commit --amend -s\` (single commit) or \`git rebase --signoff master\` (multiple) to fix."
               failed=1
             fi
-          done < <(git rev-list "$range")
+          done < <(git rev-list --no-merges "$range")
 
           if [ "$failed" -ne 0 ]; then
             exit 1
