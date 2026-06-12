@@ -123,11 +123,17 @@ jobs:
       - name: Wails build (darwin/universal)
         run: |
           set -euo pipefail
+          # -skipbindings: the Svelte frontend talks to the Go App via the
+          # auto-injected window.go.gui.App.* runtime, not generated .d.ts.
+          # Letting wails run its binding generator on CI runners can hang
+          # indefinitely (see prior windows release-workflow incident);
+          # skipping it is safe because no consumer reads the output.
           wails build \
             -platform darwin/universal \
             -ldflags "${LDFLAGS}" \
             -trimpath \
-            -clean
+            -clean \
+            -skipbindings
 
       - name: Apply packaging Info.plist overrides
         run: |
@@ -294,11 +300,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # -skipbindings: the Svelte frontend talks to the Go App via the
+          # auto-injected window.go.gui.App.* runtime, not generated .d.ts.
+          # The binding generator hangs at "Generating bindings:" on the
+          # GitHub-hosted windows-2022 runner — observed in the v0.4.0-mvp4
+          # release (job 80955756713 ran 3h 58m before the timeout cancel).
+          # Skipping is safe because no consumer reads the generated files.
           wails build \
             -platform windows/amd64 \
             -ldflags "${LDFLAGS}" \
             -trimpath \
-            -clean
+            -clean \
+            -skipbindings
 
       - name: Authenticode sign .exe
         if: ${{ env.WIN_CERT_P12 != '' }}
