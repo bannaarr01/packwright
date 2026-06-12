@@ -9,6 +9,77 @@ and the project follows MVP-tagged pre-1.0 versioning (`v0.<mvp>.<patch>-mvp<N>`
 
 _No unreleased changes._
 
+## [v0.4.0-mvp4] — ecosystem + release: distribution, versioning, packaging, auto-update, usage log
+
+### Added
+- `internal/pack/install` — git-based pack distribution. `packwright packs
+  {add,update,remove,list}` clones a remote repo (with optional `#<ref>`
+  pin) or symlinks a local directory into `<home>/packs/<name>`. Pin
+  storage at `<home>/packs/pins.json`. `--end-of-options` argv defence
+  on every git invocation.
+- `internal/version` and `internal/pack.Check` — three-stream SemVer
+  (app / manifest-schema / pack) plus a `requires:` gate at pack load.
+  Incompatible packs are rejected with a typed `*RequiresError` carrying
+  the pack name, failing module, constraint, and running version. Dev
+  builds (`meta.Version == "dev"`) bypass the gate.
+- `cmd/cmd_migrate.go` — `packwright migrate-manifests` sweeps
+  `<home>/packs/**` and rewrites old `schema_version` tokens to the
+  current one, preserving a `.bak` next to each touched file.
+- `internal/update` — launch-time GitHub Releases probe with 24h
+  per-channel cache, channel-aware (`stable` / `prerelease`), stderr
+  `Banner`. Opt-out via `PACKWRIGHT_NO_UPDATE_CHECK=1` or
+  `disable_update_check: true` in `<home>/config.yaml`. `update_channel`
+  YAML key selects the stream.
+- `internal/usage` — local-only JSONL events at
+  `<home>/logs/usage.jsonl` with `lumberjack.v2` rotation (5 MB,
+  3 backups, no compression). Recorded fields: timestamp, slash, kind,
+  duration, outcome, surface, app version. Never records AWS
+  identifiers, region, stack names, or form values.
+- `cmd/cmd_packs.go` — cobra subcommand tree dispatching to
+  `install.Run` via the shared `registerSubcommand` registry.
+- `action/dispatch.SetDefaultSurface` / `surfaceFromContext` fallback —
+  `bootstrap.Init` records the front-end's surface label so usage events
+  carry `tui` / `gui` even without per-call `WithSurface`.
+- `bootstrap.runUpdateCheck` — 5-second-deadline goroutine spawned from
+  `Init`. Tests via the `var checkForUpdate = runUpdateCheck` seam.
+- `.github/workflows/release.yml` — six-platform release matrix (darwin
+  universal, windows amd64, linux amd64/arm64), macOS codesign +
+  notarize, Windows signtool, Linux AppImage, GitHub Release publish
+  with `SHA256SUMS`, Homebrew tap PR. `v*-test-*` tags dry-run.
+- `.github/workflows/license-scan.yml` — `go-licenses` against
+  Apache-2.0 / MIT / BSD-2-3-Clause / ISC / MPL-2.0 allowlist.
+- `.github/workflows/dco.yml` — Signed-off-by check over
+  `merge-base..HEAD` for every non-merge commit in a PR.
+- `CODE_OF_CONDUCT.md` (Contributor Covenant 1.4) split out of
+  `CONTRIBUTING.md`.
+- `packaging/homebrew/packwright.rb`, `packaging/README.md`,
+  `build/{darwin,linux,macos,windows}/**` — installer + tap artefacts.
+- `meta/meta.go` — leaf package exporting `Version` (overridden by
+  release ldflags), readable by every other package without pulling in
+  heavy deps.
+- New `config.yaml` keys: `disable_update_check` (bool),
+  `update_channel` (string; empty == `stable`).
+
+### Changed
+- `pack/discover.go::loadPack` — runs the requires gate
+  (`pkgcheck.Check`) between meta parse and manifest load. Incompatible
+  packs short-circuit with a `*RequiresError`.
+- `bootstrap.Init` — opens log + usage destinations, then spawns the
+  update probe and registers the surface fallback. Failures still
+  warn-and-continue per ADR-0018.
+- `tui/launch.go` and `gui/launch.go` — pass their surface label
+  (`"tui"` / `"gui"`) into `bootstrap.Init`.
+- `CONTRIBUTING.md` — drops the duplicated Code of Conduct preamble
+  (now in its own file), adds the "Developer Certificate of Origin"
+  section explaining `git commit -s` and pointing at `dco.yml`.
+
+### Fixed
+- Release workflow ldflags. MVP-3 set
+  `-X github.com/bannaarr01/packwright/cmd.version=${tag}`, but the
+  `cmd` package never declared a `version` variable, so every shipped
+  binary reported `dev` from `meta.Version`. Now sets both
+  `-X meta.Version=${tag}` and `-X internal/version.Version=${tag}`.
+
 ## [v0.3.0-mvp3] — palette wiring, hot-reload, conflict resolution, sidebar
 
 ### Added
@@ -73,7 +144,8 @@ _No unreleased changes._
 - Wails + Svelte 5 GUI scaffold sharing theme tokens via `//go:embed`.
 - CI workflow enforcing `gofmt`, `go vet`, `go build`, `go test`.
 
-[Unreleased]: https://github.com/bannaarr01/packwright/compare/v0.3.0-mvp3...HEAD
+[Unreleased]: https://github.com/bannaarr01/packwright/compare/v0.4.0-mvp4...HEAD
+[v0.4.0-mvp4]: https://github.com/bannaarr01/packwright/compare/v0.3.0-mvp3...v0.4.0-mvp4
 [v0.3.0-mvp3]: https://github.com/bannaarr01/packwright/compare/v0.2.0-mvp2...v0.3.0-mvp3
 [v0.2.0-mvp2]: https://github.com/bannaarr01/packwright/compare/v0.1.0-mvp1...v0.2.0-mvp2
 [v0.1.0-mvp1]: https://github.com/bannaarr01/packwright/releases/tag/v0.1.0-mvp1
