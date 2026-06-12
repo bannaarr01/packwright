@@ -9,7 +9,14 @@ dist/*
 !dist/index.html
 
 # Wails generates JS shims for the Go bindings here on `wails build` / `wails dev`.
-src/wailsjs/
+# We ignore the generated Go-app bindings (they're regenerated per build) but
+# TRACK the Wails runtime library itself — it's a stable Wails-shipped file
+# imported by Palette.svelte / Sidebar.svelte via `EventsOn`, and CI uses
+# `-skipbindings` (the generator hangs on Windows runners), so without
+# committing the runtime the vite/rollup build would fail to resolve the
+# import. The runtime is small (~300 LoC, MIT-licensed by Wails).
+src/wailsjs/wailsjs/go/
+src/wailsjs/wailsjs/runtime/*.map
 
 # Vite cache
 .vite/
