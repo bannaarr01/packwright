@@ -59,8 +59,9 @@ type PackMeta struct {
 	// Author identifies the pack maintainer. Optional, free-form.
 	Author string `yaml:"author"`
 
-	// Requires maps a module name (e.g. "packwright") to a semver
-	// constraint string (e.g. ">=0.1.0"). MVP 1 parses but does not enforce
-	// the constraints; MVP-4 PR-02 ships the real check.
+	// Requires maps a module name (e.g. "packwright" or
+	// "packwright.manifest") to a constraint string. Enforced at load
+	// time by internal/pack.Check via loadPack — a mismatch surfaces as a
+	// *RequiresError wrapped with the pack path. See ADR-0028.
 	Requires map[string]string `yaml:"requires"`
 }

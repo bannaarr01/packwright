@@ -3,14 +3,14 @@ package gui
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
+
+	"github.com/bannaarr01/packwright/bootstrap"
 )
 
 // Launch starts the Packwright GUI and blocks until the user closes the
@@ -21,10 +21,13 @@ import (
 // Cancelling ctx causes the Wails window to quit cleanly via the bridge
 // goroutine attached to the App.
 //
-// Wave-1 dependencies (config, pack registry) are not yet wired in; Launch
-// runs standalone with a stderr slog logger to match the TUI's posture.
+// Bootstrap (shared with the TUI) opens the operational log
+// <home>/logs/packwright.log and the usage log <home>/logs/usage.jsonl,
+// and rewires slog.Default to the operational logger so every package
+// that calls slog.Default() flows through the rotated file.
 func Launch(ctx context.Context) error {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := bootstrap.Init("gui")
+
 	app := newApp(logger)
 	app.parentCtx = ctx
 

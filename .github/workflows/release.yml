@@ -1,0 +1,676 @@
+name: Release
+
+# Release workflow for Packwright.
+#
+# Trigger: a `v*` tag (e.g. `v1.2.3`). Pushing a `v*-test-*` tag (e.g.
+# `v0.0.0-test-rc1`) also fires the workflow but skips publishing to the
+# GitHub Release and tap repo, so contributors can dry-run packaging.
+#
+# Produces (per ADR-0029):
+#   packwright-<version>-darwin-universal.dmg     (signed + notarized when MACOS_* secrets present)
+#   packwright-<version>-windows-amd64-setup.exe  (Inno Setup; Authenticode-signed when WIN_CERT_* secrets present)
+#   packwright-<version>-linux-amd64.AppImage
+#   packwright-<version>-linux-arm64.AppImage
+#   packwright-<version>-{os}-{arch}.tar.gz / .zip   (bare binary archives)
+#   SHA256SUMS
+#
+# Secrets are documented in packaging/README.md.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # required by softprops/action-gh-release
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Resolve the version once. Other jobs read these outputs.
+  # --------------------------------------------------------------------------
+  meta:
+    name: Resolve release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.derive.outputs.version }}    # 1.2.3   (no leading v)
+      tag: ${{ steps.derive.outputs.tag }}            # v1.2.3
+      is_test: ${{ steps.derive.outputs.is_test }}    # "true" for v*-test-* tags
+      ldflags: ${{ steps.derive.outputs.ldflags }}
+    steps:
+      - name: Derive version from tag
+        id: derive
+        env:
+          # github.ref is a git ref name controlled by whoever pushed the tag.
+          # Tag pushes require write access, but we still validate the shape
+          # before letting the value flow into shell / sed / Inno Setup
+          # arguments downstream.
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          tag="${REF#refs/tags/}"
+          # Enforce a strict semver-ish shape: v<num>.<num>.<num>[-pre][+build]
+          # plus the test variant v<num>.<num>.<num>-test-<id>.
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$'; then
+            echo "::error::Tag '$tag' does not match the required semver shape (vMAJOR.MINOR.PATCH[-prerelease])"
+            exit 1
+          fi
+          version="${tag#v}"
+          case "$tag" in
+            *-test-*) is_test="true" ;;
+            *)        is_test="false" ;;
+          esac
+          # Two version sources need to be overridden:
+          #   - meta.Version: read by cmd/root.go (--version), pack/discover.go,
+          #     and action/dispatch (usage events).
+          #   - internal/version.Version: read by internal/pack.Check (the
+          #     pack.yaml requires gate).
+          # Folding these into one variable is tracked separately; for now the
+          # release must set both or the requires gate will see "dev" at runtime.
+          ldflags="-s -w -X github.com/bannaarr01/packwright/meta.Version=${tag} -X github.com/bannaarr01/packwright/internal/version.Version=${tag}"
+          {
+            echo "tag=${tag}"
+            echo "version=${version}"
+            echo "is_test=${is_test}"
+            echo "ldflags=${ldflags}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Release tag=${tag} version=${version} is_test=${is_test}"
+
+  # --------------------------------------------------------------------------
+  # macOS: universal .app + .dmg (codesign + notarize when secrets present),
+  # plus bare-binary tar.gz for each arch.
+  # --------------------------------------------------------------------------
+  darwin:
+    name: Build darwin (universal)
+    needs: meta
+    runs-on: macos-13
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      TAG: ${{ needs.meta.outputs.tag }}
+      LDFLAGS: ${{ needs.meta.outputs.ldflags }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: gui/web/package-lock.json
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Build TUI/GUI bare binaries (per-arch tar.gz)
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for arch in arm64 amd64; do
+            out="packwright-${VERSION}-darwin-${arch}"
+            GOOS=darwin GOARCH="${arch}" CGO_ENABLED=0 \
+              go build -trimpath -ldflags "${LDFLAGS}" -o "dist/${out}/packwright" .
+            cp LICENSE NOTICE README.md "dist/${out}/"
+            (cd dist && tar -czf "${out}.tar.gz" "${out}")
+            rm -rf "dist/${out}"
+          done
+
+      - name: Wails build (darwin/universal)
+        run: |
+          set -euo pipefail
+          wails build \
+            -platform darwin/universal \
+            -ldflags "${LDFLAGS}" \
+            -trimpath \
+            -clean
+
+      - name: Apply packaging Info.plist overrides
+        run: |
+          set -euo pipefail
+          # Wails templates its own Info.plist from build/darwin/Info.plist
+          # (which it owns). build/macos/Info.plist (which this PR owns) is
+          # the source of truth for packaging-layer keys Wails doesn't expose
+          # via wails.json — bundle identifier, app category, copyright.
+          # We apply those keys to the produced bundle before codesign.
+          app_plist="build/bin/packwright.app/Contents/Info.plist"
+          /usr/bin/plutil -replace CFBundleIdentifier \
+            -string "io.packwright.app" "$app_plist"
+          /usr/bin/plutil -replace LSApplicationCategoryType \
+            -string "public.app-category.developer-tools" "$app_plist"
+          /usr/bin/plutil -replace NSHumanReadableCopyright \
+            -string "Apache-2.0 — see LICENSE" "$app_plist"
+          /usr/bin/plutil -replace LSMinimumSystemVersion \
+            -string "10.15.0" "$app_plist"
+          /usr/bin/plutil -lint "$app_plist"
+
+      - name: Decode signing identity (macOS)
+        if: ${{ env.MACOS_CERTIFICATE != '' }}
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cert_path="$RUNNER_TEMP/packwright-codesign.p12"
+          keychain="$RUNNER_TEMP/packwright-build.keychain-db"
+          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$cert_path"
+          security create-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$keychain"
+          security import "$cert_path" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$MACOS_KEYCHAIN_PASSWORD" "$keychain" >/dev/null
+          echo "KEYCHAIN_PATH=$keychain" >> "$GITHUB_ENV"
+
+      - name: Codesign .app
+        if: ${{ env.MACOS_CERTIFICATE != '' }}
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          app="build/bin/packwright.app"
+          if [ ! -d "$app" ]; then
+            echo "::error::Expected $app not found after wails build"
+            ls -la build/bin || true
+            exit 1
+          fi
+          /usr/bin/codesign \
+            --force \
+            --options runtime \
+            --timestamp \
+            --entitlements build/macos/entitlements.plist \
+            --sign "$MACOS_SIGNING_IDENTITY" \
+            --deep \
+            "$app"
+          /usr/bin/codesign --verify --strict --verbose=2 "$app"
+
+      - name: Build DMG
+        run: |
+          set -euo pipefail
+          app="build/bin/packwright.app"
+          dmg="dist/packwright-${VERSION}-darwin-universal.dmg"
+          if [ ! -d "$app" ]; then
+            echo "::error::Expected $app not found"
+            ls -la build/bin || true
+            exit 1
+          fi
+          stage="$RUNNER_TEMP/dmg-stage"
+          rm -rf "$stage" && mkdir -p "$stage"
+          cp -R "$app" "$stage/"
+          ln -s /Applications "$stage/Applications"
+          /usr/bin/hdiutil create \
+            -volname "Packwright ${VERSION}" \
+            -srcfolder "$stage" \
+            -ov \
+            -format UDZO \
+            "$dmg"
+
+      - name: Notarize + staple DMG
+        if: ${{ env.MACOS_NOTARY_APPLE_ID != '' }}
+        env:
+          MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+          MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
+          MACOS_NOTARY_TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          dmg="dist/packwright-${VERSION}-darwin-universal.dmg"
+          xcrun notarytool submit "$dmg" \
+            --apple-id "$MACOS_NOTARY_APPLE_ID" \
+            --password "$MACOS_NOTARY_PASSWORD" \
+            --team-id "$MACOS_NOTARY_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$dmg"
+          /usr/bin/codesign --verify --deep --strict "$dmg" || true
+          /usr/sbin/spctl --assess --type install -vv "$dmg" || true
+
+      - name: Warn if unsigned
+        if: ${{ env.MACOS_CERTIFICATE == '' }}
+        run: |
+          echo "::warning::macOS artifact is UNSIGNED (MACOS_* secrets not set). Users will see a Gatekeeper warning."
+
+      - name: Upload darwin artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: darwin
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # Windows: Wails .exe + Inno Setup installer + bare-binary zip.
+  # --------------------------------------------------------------------------
+  windows:
+    name: Build windows/amd64
+    needs: meta
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      TAG: ${{ needs.meta.outputs.tag }}
+      LDFLAGS: ${{ needs.meta.outputs.ldflags }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: gui/web/package-lock.json
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+        shell: bash
+
+      - name: Build bare binary (zip)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          out="packwright-${VERSION}-windows-amd64"
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+            go build -trimpath -ldflags "${LDFLAGS}" -o "dist/${out}/packwright.exe" .
+          cp LICENSE NOTICE README.md "dist/${out}/"
+          (cd dist && 7z a -tzip "${out}.zip" "${out}" >/dev/null)
+          rm -rf "dist/${out}"
+
+      - name: Wails build (windows/amd64)
+        shell: bash
+        run: |
+          set -euo pipefail
+          wails build \
+            -platform windows/amd64 \
+            -ldflags "${LDFLAGS}" \
+            -trimpath \
+            -clean
+
+      - name: Authenticode sign .exe
+        if: ${{ env.WIN_CERT_P12 != '' }}
+        shell: pwsh
+        env:
+          WIN_CERT_P12: ${{ secrets.WIN_CERT_P12 }}
+          WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $certPath = Join-Path $env:RUNNER_TEMP 'packwright-codesign.p12'
+          [System.IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WIN_CERT_P12))
+          $signtool = Get-ChildItem -Path 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match 'x64\\signtool.exe$' } |
+            Select-Object -First 1
+          if (-not $signtool) { throw 'signtool.exe not found' }
+          & $signtool.FullName sign /f $certPath /p $env:WIN_CERT_PASSWORD `
+            /tr 'http://timestamp.digicert.com' /td sha256 /fd sha256 `
+            'build/bin/packwright.exe'
+
+      - name: Build Inno Setup installer
+        shell: pwsh
+        env:
+          INSTALLER_VERSION: ${{ env.VERSION }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Inno Setup 6 ships pre-installed on github-hosted windows-latest.
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          & $iscc /DAppVersion=$env:INSTALLER_VERSION build/windows/installer.iss
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $installer = "build/windows/Output/packwright-$env:INSTALLER_VERSION-windows-amd64-setup.exe"
+          if (-not (Test-Path $installer)) {
+            # Write-Output goes to stdout, which is where the runner scans for
+            # workflow commands. Write-Host writes to the host stream and the
+            # ::error:: annotation is silently dropped.
+            Write-Output '::error::Inno Setup did not produce the expected installer'
+            Get-ChildItem -Recurse build/windows/Output | ForEach-Object { Write-Output $_.FullName }
+            throw 'installer missing'
+          }
+          Copy-Item $installer dist/
+
+      - name: Authenticode sign installer
+        if: ${{ env.WIN_CERT_P12 != '' }}
+        shell: pwsh
+        env:
+          WIN_CERT_P12: ${{ secrets.WIN_CERT_P12 }}
+          WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $certPath = Join-Path $env:RUNNER_TEMP 'packwright-codesign.p12'
+          if (-not (Test-Path $certPath)) {
+            [System.IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WIN_CERT_P12))
+          }
+          $signtool = Get-ChildItem -Path 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match 'x64\\signtool.exe$' } |
+            Select-Object -First 1
+          $installer = Get-ChildItem dist -Filter '*-setup.exe' | Select-Object -First 1
+          & $signtool.FullName sign /f $certPath /p $env:WIN_CERT_PASSWORD `
+            /tr 'http://timestamp.digicert.com' /td sha256 /fd sha256 `
+            $installer.FullName
+
+      - name: Warn if unsigned
+        if: ${{ env.WIN_CERT_P12 == '' }}
+        shell: bash
+        run: |
+          echo "::warning::Windows installer is UNSIGNED (WIN_CERT_* secrets not set). SmartScreen will warn users on first launch."
+
+      - name: Upload windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # Linux: AppImage per arch + bare-binary tar.gz.
+  # --------------------------------------------------------------------------
+  linux:
+    name: Build linux/${{ matrix.arch }}
+    needs: meta
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      TAG: ${{ needs.meta.outputs.tag }}
+      LDFLAGS: ${{ needs.meta.outputs.ldflags }}
+      TARGET_ARCH: ${{ matrix.arch }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up QEMU
+        if: ${{ matrix.arch == 'arm64' }}
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Install Linux build deps
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            file desktop-file-utils zsync libfuse2
+
+      - name: Install appimagetool
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/appimagetool \
+            "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x /tmp/appimagetool
+
+      - name: Install appimage-builder
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade appimage-builder
+
+      - name: Build bare binary (tar.gz)
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          out="packwright-${VERSION}-linux-${TARGET_ARCH}"
+          GOOS=linux GOARCH="${TARGET_ARCH}" CGO_ENABLED=0 \
+            go build -trimpath -ldflags "${LDFLAGS}" -o "dist/${out}/packwright" .
+          cp LICENSE NOTICE README.md "dist/${out}/"
+          (cd dist && tar -czf "${out}.tar.gz" "${out}")
+          rm -rf "dist/${out}"
+
+      - name: Build AppImage
+        env:
+          APPDIR: ${{ github.workspace }}/AppDir
+        run: |
+          set -euo pipefail
+          rm -rf "$APPDIR"
+          mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/512x512/apps"
+
+          # The AppImage wraps the SAME single Go binary used elsewhere. The
+          # AppRun entry point launches the GUI subcommand by default.
+          GOOS=linux GOARCH="${TARGET_ARCH}" CGO_ENABLED=0 \
+            go build -trimpath -ldflags "${LDFLAGS}" -o "$APPDIR/usr/bin/packwright" .
+
+          # Icon (use the existing Wails app icon as the AppImage icon).
+          cp build/appicon.png "$APPDIR/usr/share/icons/hicolor/512x512/apps/packwright.png"
+          cp build/appicon.png "$APPDIR/packwright.png"
+
+          # Desktop entry. The Linux AppImage ships the TUI front-end only
+          # for v1 (CGO=0; the Wails GUI on Linux is gated behind a
+          # follow-up that wires GTK/WebKit deps — see packaging/README.md).
+          cat > "$APPDIR/usr/share/applications/packwright.desktop" <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=Packwright
+          Comment=Hybrid TUI + GUI tool for scaffolding AWS infrastructure templates
+          Exec=packwright
+          Icon=packwright
+          Categories=Development;Utility;
+          Terminal=true
+          EOF
+          cp "$APPDIR/usr/share/applications/packwright.desktop" "$APPDIR/packwright.desktop"
+
+          cat > "$APPDIR/AppRun" <<'EOF'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bin/packwright" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+
+          # appimage-builder reads build/linux/AppImageBuilder.yml for
+          # additional metadata (update info, runtime hints). We pre-staged
+          # the AppDir; appimage-builder uses it as-is.
+          export VERSION TARGET_ARCH
+          appimage-builder --recipe build/linux/AppImageBuilder.yml --skip-tests || {
+            echo "::warning::appimage-builder failed; falling back to appimagetool"
+            ARCH="${TARGET_ARCH}"
+            case "${TARGET_ARCH}" in
+              amd64) ARCH="x86_64" ;;
+              arm64) ARCH="aarch64" ;;
+            esac
+            ARCH="$ARCH" /tmp/appimagetool --no-appstream "$APPDIR" \
+              "dist/packwright-${VERSION}-linux-${TARGET_ARCH}.AppImage"
+          }
+
+          # Normalise final filename whichever tool produced it.
+          target="dist/packwright-${VERSION}-linux-${TARGET_ARCH}.AppImage"
+          if [ ! -f "$target" ]; then
+            produced="$(ls Packwright-*.AppImage packwright-*.AppImage 2>/dev/null | head -n1 || true)"
+            if [ -n "$produced" ]; then
+              mv "$produced" "$target"
+            fi
+          fi
+          ls -la dist/
+
+      - name: Upload linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # Aggregate: collect everything, generate SHA256SUMS, publish GitHub Release.
+  # --------------------------------------------------------------------------
+  publish:
+    name: Publish GitHub Release
+    needs: [meta, darwin, windows, linux]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      TAG: ${{ needs.meta.outputs.tag }}
+      IS_TEST: ${{ needs.meta.outputs.is_test }}
+    outputs:
+      darwin_arm64_sha256: ${{ steps.shasums.outputs.darwin_arm64_sha256 }}
+      darwin_amd64_sha256: ${{ steps.shasums.outputs.darwin_amd64_sha256 }}
+      linux_amd64_sha256: ${{ steps.shasums.outputs.linux_amd64_sha256 }}
+      linux_arm64_sha256: ${{ steps.shasums.outputs.linux_arm64_sha256 }}
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten + generate SHA256SUMS
+        id: shasums
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          find artifacts -type f \
+            \( -name '*.dmg' -o -name '*.exe' -o -name '*.zip' \
+               -o -name '*.tar.gz' -o -name '*.AppImage' \) \
+            -exec cp {} dist/ \;
+
+          echo "=== artifacts ==="
+          ls -la dist/
+
+          (cd dist && shasum -a 256 * > SHA256SUMS)
+          echo "=== SHA256SUMS ==="
+          cat dist/SHA256SUMS
+
+          # The Homebrew formula needs per-arch sha256s for every tarball it
+          # references (darwin-arm64, darwin-amd64, linux-amd64, linux-arm64).
+          # The DMG / installer / AppImage are GUI distributions and don't go
+          # through brew; brew always installs the bare-binary tar.gz.
+          extract() {
+            f="packwright-${VERSION}-$1.tar.gz"
+            awk -v f="$f" '$2==f {print $1}' dist/SHA256SUMS
+          }
+          {
+            echo "darwin_arm64_sha256=$(extract darwin-arm64)"
+            echo "darwin_amd64_sha256=$(extract darwin-amd64)"
+            echo "linux_amd64_sha256=$(extract linux-amd64)"
+            echo "linux_arm64_sha256=$(extract linux-arm64)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        if: ${{ env.IS_TEST != 'true' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Packwright ${{ env.VERSION }}
+          generate_release_notes: true
+          files: dist/*
+          fail_on_unmatched_files: true
+
+      - name: Dry-run summary (test tag)
+        if: ${{ env.IS_TEST == 'true' }}
+        run: |
+          echo "::notice::Test tag detected; skipped GitHub Release upload."
+          echo "Built artifacts:"
+          ls -la dist/
+
+  # --------------------------------------------------------------------------
+  # Open a PR against the Homebrew tap repo to bump version + SHA256.
+  # Skipped for *-test-* tags and when HOMEBREW_TAP_TOKEN is not configured.
+  # --------------------------------------------------------------------------
+  homebrew:
+    name: Open Homebrew tap PR
+    needs: [meta, publish]
+    if: ${{ needs.meta.outputs.is_test != 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      DARWIN_ARM64_SHA256: ${{ needs.publish.outputs.darwin_arm64_sha256 }}
+      DARWIN_AMD64_SHA256: ${{ needs.publish.outputs.darwin_amd64_sha256 }}
+      LINUX_AMD64_SHA256: ${{ needs.publish.outputs.linux_amd64_sha256 }}
+      LINUX_ARM64_SHA256: ${{ needs.publish.outputs.linux_arm64_sha256 }}
+      TAP_REPO: bannaarr01/homebrew-packwright
+    steps:
+      - name: Skip if no tap token
+        id: gate
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "${TAP_TOKEN}" ]; then
+            echo "::warning::HOMEBREW_TAP_TOKEN not set; skipping tap PR."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out source repo (for formula template)
+        if: ${{ steps.gate.outputs.skip != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          path: src
+
+      - name: Check out tap repo
+        if: ${{ steps.gate.outputs.skip != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TAP_REPO }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Render formula
+        if: ${{ steps.gate.outputs.skip != 'true' }}
+        run: |
+          set -euo pipefail
+          mkdir -p tap/Formula
+          tmpl="src/packaging/homebrew/packwright.rb"
+          out="tap/Formula/packwright.rb"
+          # Substitute every placeholder. Values come from $env so the workflow
+          # expression context doesn't interpolate untrusted strings into sed.
+          # VERSION is validated as semver in the meta job.
+          sed \
+            -e "s|@@VERSION@@|${VERSION}|g" \
+            -e "s|@@DARWIN_ARM64_SHA256@@|${DARWIN_ARM64_SHA256}|g" \
+            -e "s|@@DARWIN_AMD64_SHA256@@|${DARWIN_AMD64_SHA256}|g" \
+            -e "s|@@LINUX_AMD64_SHA256@@|${LINUX_AMD64_SHA256}|g" \
+            -e "s|@@LINUX_ARM64_SHA256@@|${LINUX_ARM64_SHA256}|g" \
+            "$tmpl" > "$out"
+          echo "=== rendered formula ==="
+          cat "$out"
+
+      - name: Open / update tap PR
+        if: ${{ steps.gate.outputs.skip != 'true' }}
+        working-directory: tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          branch="packwright-${VERSION}"
+          git config user.name 'packwright-release-bot'
+          git config user.email 'packwright-release-bot@users.noreply.github.com'
+          git checkout -B "$branch"
+          git add Formula/packwright.rb
+          if git diff --cached --quiet; then
+            echo "::notice::Formula already up to date; no PR needed."
+            exit 0
+          fi
+          git commit -m "packwright ${VERSION}"
+          git push --force-with-lease origin "$branch"
+
+          # Reuse an open PR if it exists; otherwise open a new one.
+          existing="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number' || true)"
+          if [ -z "$existing" ]; then
+            gh pr create \
+              --title "packwright ${VERSION}" \
+              --body  "Bumps packwright to ${VERSION}.\n\nAutomated by Packwright release workflow." \
+              --head  "$branch" \
+              --base  main
+          else
+            echo "::notice::PR #${existing} already open for ${branch}; force-push updated it."
+          fi

@@ -1,0 +1,72 @@
+name: DCO
+
+# Enforces ADR-0032's Developer Certificate of Origin posture: every
+# commit on a pull request must carry a `Signed-off-by:` trailer matching
+# the commit author. There is no CLA — sign-off is the entire contributor
+# agreement.
+#
+# The workflow runs against the PR's commit list (not a merge commit) so
+# contributors get a per-commit verdict and can rewrite history with
+# `git rebase --signoff master` to fix a missing trailer.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  dco:
+    name: Signed-off-by check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR head
+        uses: actions/checkout@v4
+        with:
+          # Fetch every commit in the PR so the loop below can iterate
+          # over them. GH default depth=1 would only see the tip.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify every commit carries Signed-off-by
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # The merge-base is the closest ancestor of HEAD on the base
+          # branch — commits between merge-base..HEAD are the PR's own
+          # commits, excluding anything already on the base.
+          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          range="${merge_base}..${HEAD_SHA}"
+          echo "Checking commits in range: ${range}"
+
+          failed=0
+          # --no-merges skips GitHub-generated "Merge pull request #N" commits.
+          # The DCO certifies the *content* of a contribution, and merge commits
+          # contribute no new content — they are integration artefacts produced
+          # by the GitHub UI, which cannot add a Signed-off-by trailer. This
+          # matches the canonical DCO bot behaviour (probot/dco) and the
+          # cncf/foundation guidance: only non-merge commits are gated.
+          while read -r sha; do
+            [ -z "$sha" ] && continue
+            msg="$(git log -1 --format=%B "$sha")"
+            author_name="$(git log -1 --format=%an "$sha")"
+            author_email="$(git log -1 --format=%ae "$sha")"
+            expected="Signed-off-by: ${author_name} <${author_email}>"
+            if printf '%s' "$msg" | grep -qiE '^[[:space:]]*Signed-off-by:[[:space:]].+<.+@.+>'; then
+              echo "✓ $sha — $(printf '%s' "$msg" | head -n1)"
+            else
+              echo "::error::Commit $sha is missing a Signed-off-by trailer."
+              echo "::error::Expected (or any valid sign-off): ${expected}"
+              echo "::error::Run \`git commit --amend -s\` (single commit) or \`git rebase --signoff master\` (multiple) to fix."
+              failed=1
+            fi
+          done < <(git rev-list --no-merges "$range")
+
+          if [ "$failed" -ne 0 ]; then
+            exit 1
+          fi
+          echo "All commits in the PR carry a Signed-off-by trailer."

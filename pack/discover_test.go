@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	pkgcheck "github.com/bannaarr01/packwright/internal/pack"
+	pkgversion "github.com/bannaarr01/packwright/internal/version"
 )
 
 // testdataHome builds a home directory layout that wraps the committed
@@ -150,6 +153,55 @@ func TestDiscoverUnknownPackYAMLFieldIsRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("Discover accepted unknown pack.yaml field, want strict rejection")
 	}
+}
+
+// TestDiscoverRejectsIncompatibleRequires pins the ADR-0028 exit
+// criterion: a pack whose pack.yaml declares a requires.packwright
+// constraint the running app cannot satisfy is rejected at load with a
+// typed *RequiresError. The running version is forced to a real release
+// for the duration of this test because Check skips the comparison when
+// version.Get() is the "dev" sentinel.
+func TestDiscoverRejectsIncompatibleRequires(t *testing.T) {
+	restore := setRunningVersion(t, "v0.4.0")
+	t.Cleanup(restore)
+
+	home := t.TempDir()
+	dir := filepath.Join(home, "packs", "future")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("creating pack dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pack.yaml"), []byte(
+		"name: future\nversion: 1.0.0\nrequires:\n  packwright: \">=99.0.0\"\n",
+	), 0o644); err != nil {
+		t.Fatalf("writing pack.yaml: %v", err)
+	}
+
+	packs, err := Discover(home)
+	if err == nil {
+		t.Fatal("Discover accepted a pack with an unsatisfiable requires.packwright")
+	}
+	if len(packs) != 0 {
+		t.Fatalf("Discover returned %d packs alongside the rejected pack, want 0", len(packs))
+	}
+	var re *pkgcheck.RequiresError
+	if !errors.As(err, &re) {
+		t.Fatalf("Discover error = %v, want a *RequiresError in the chain", err)
+	}
+	if re.Module != pkgcheck.ModulePackwright {
+		t.Errorf("RequiresError.Module = %q, want %q", re.Module, pkgcheck.ModulePackwright)
+	}
+	if !strings.Contains(err.Error(), ">=99.0.0") {
+		t.Errorf("error %q does not echo the offending constraint", err)
+	}
+}
+
+// setRunningVersion overrides internal/pack/version.Version for the
+// duration of the test and returns the restore closure. Lives in this
+// file rather than in a shared helper so the requires-gate test reads
+// top-to-bottom; if a second caller appears, lift it to a helper file.
+func setRunningVersion(t *testing.T, v string) func() {
+	t.Helper()
+	return pkgversion.Set(v)
 }
 
 func TestDiscoverIgnoresNonDirectoryEntries(t *testing.T) {
