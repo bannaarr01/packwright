@@ -13,6 +13,20 @@
 #define AppVersion "0.0.0-dev"
 #endif
 
+; NumericVersion strips any pre-release / build identifier from AppVersion
+; so it matches the strict <n>[.<n>][.<n>][.<n>] shape Inno Setup requires
+; for VersionInfoVersion. Examples of the mapping:
+;   "0.4.0-mvp4"            -> "0.4.0"
+;   "0.0.0-test-mvp4-rc2"   -> "0.0.0"
+;   "1.2.3"                 -> "1.2.3"
+; Everything user-visible (AppVerName, OutputBaseFilename, etc.) keeps the
+; full string; only the VersionInfo block uses the numeric form.
+#if Pos("-", AppVersion) > 0
+  #define NumericVersion Copy(AppVersion, 1, Pos("-", AppVersion) - 1)
+#else
+  #define NumericVersion AppVersion
+#endif
+
 #define AppName        "Packwright"
 #define AppPublisher   "Packwright"
 #define AppURL         "https://github.com/bannaarr01/packwright"
@@ -43,7 +57,7 @@ ArchitecturesInstallIn64BitMode=x64
 ChangesEnvironment=yes
 UninstallDisplayIcon={app}\{#AppExeName}
 UninstallDisplayName={#AppName} {#AppVersion}
-VersionInfoVersion={#AppVersion}
+VersionInfoVersion={#NumericVersion}
 VersionInfoCompany={#AppPublisher}
 VersionInfoDescription={#AppName} Installer
 VersionInfoProductName={#AppName}
