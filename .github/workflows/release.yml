@@ -82,7 +82,19 @@ jobs:
   darwin:
     name: Build darwin (universal)
     needs: meta
-    runs-on: macos-13
+    # Skip darwin on `v*-test-*` dry-run tags. macOS bills at 10x on
+    # GitHub Actions; reserving those minutes for real releases keeps
+    # the dry-run feedback loop fast and predictable. Real version tags
+    # still build the full matrix (see meta.is_test derivation).
+    if: ${{ needs.meta.outputs.is_test != 'true' }}
+    # macos-latest gives us whatever Apple Silicon image GitHub currently
+    # serves (faster pool than the deprecated macos-13 / Intel image,
+    # whose runner availability has degraded — observed 21-min queues
+    # and 3-hour queue-and-die incidents on this repo). `wails build
+    # -platform darwin/universal` produces a universal binary on either
+    # arch host via Go cross-compile + lipo, so the image change is
+    # transparent to the artifact.
+    runs-on: macos-latest
     env:
       VERSION: ${{ needs.meta.outputs.version }}
       TAG: ${{ needs.meta.outputs.tag }}
