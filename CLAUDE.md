@@ -12,7 +12,8 @@ infrastructure templates. One binary (`packwright`): TUI by default, GUI with
 - **Format & vet**: `gofmt -l .` must be empty and `go vet ./...` clean before any
   task is "done".
 - **Minimal dependencies**: cobra is the only third-party dep — justify any new one.
-- **No `internal/*` packages.**
+- **`internal/*` is fine** for domain packages — front-end wiring still goes
+  through `cmd/registry.go`, not direct imports.
 - **Git**: never `commit`/`push` unless explicitly asked. Branch off `master`;
   never commit to it directly. The developer reviews diffs and commits manually.
 

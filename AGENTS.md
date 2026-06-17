@@ -22,8 +22,10 @@ Module path: `github.com/bannaarr01/packwright`
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
 - **Minimal Dependencies**: Cobra is currently the *only* third-party dependency.
   Adding a new module needs a real justification.
-- **No `internal/*` packages**: Every package is importable so later PRs can wire
-  in front-ends via the registry.
+- **`internal/*` is allowed**: Domain packages (`internal/action`, `internal/stream`,
+  `internal/update`, `internal/ai`, …) live under `internal/`. Front-end wiring still
+  goes through the `cmd/` registry vars, not direct imports, so the encapsulation
+  boundary is preserved.
 
 ## Project Layout & Conventions
 ```
@@ -224,5 +226,5 @@ to (e.g. an empty docs-only commit on a hook-edit branch).
 - **Testability**: prefer constructors (e.g. `newRootCmd()`) over package-global
   singletons where it aids isolation; restore any mutated package-level state in
   tests (`t.Cleanup`).
-- **No `internal/*` packages** (project rule — see Core Principles).
+- **`internal/*` is allowed** for domain packages (project rule — see Core Principles).
 - **Dependencies**: keep them minimal; prefer the standard library.
