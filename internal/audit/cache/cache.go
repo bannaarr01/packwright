@@ -9,13 +9,20 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/bannaarr01/packwright/internal/audit/cost"
+	"github.com/bannaarr01/packwright/internal/audit/lastused"
 )
 
 // SchemaVersion is the snapshot file format version this build understands.
 // A snapshot on disk whose version field differs is treated as legacy: the
 // file is renamed to "*.legacy.json" on next read so the user can inspect
 // what changed, and the caller is asked to re-scan.
-const SchemaVersion = 1
+//
+// v1 → v2: added LastUsed and CostEstimate fields to Resource (ADR-0041,
+// ADR-0042). Snapshots written by v1 builds are archived to *.legacy.json
+// and a fresh scan is forced when a v2 build first opens the cache.
+const SchemaVersion = 2
 
 // Defaults.
 const (
@@ -51,16 +58,23 @@ type SkippedScanner struct {
 // duplicates the on-disk shape here so it can be implemented in isolation
 // from PR-01. Only Kind is interpreted by the cache (for partial refresh);
 // every other field is treated as opaque payload.
+//
+// SchemaVersion v2 added LastUsed and CostEstimate. The pointers are
+// optional — a snapshot may omit them when the post-process step was
+// skipped (e.g. --skip-enrichment flag) and the cache still round-trips
+// cleanly.
 type Resource struct {
-	Kind      string            `json:"kind"`
-	ID        string            `json:"id,omitempty"`
-	Region    string            `json:"region,omitempty"`
-	Account   string            `json:"account,omitempty"`
-	Name      string            `json:"name,omitempty"`
-	Tags      map[string]string `json:"tags,omitempty"`
-	CreatedAt time.Time         `json:"created_at,omitempty"`
-	State     string            `json:"state,omitempty"`
-	Raw       map[string]any    `json:"raw,omitempty"`
+	Kind         string                   `json:"kind"`
+	ID           string                   `json:"id,omitempty"`
+	Region       string                   `json:"region,omitempty"`
+	Account      string                   `json:"account,omitempty"`
+	Name         string                   `json:"name,omitempty"`
+	Tags         map[string]string        `json:"tags,omitempty"`
+	CreatedAt    time.Time                `json:"created_at,omitempty"`
+	State        string                   `json:"state,omitempty"`
+	Raw          map[string]any           `json:"raw,omitempty"`
+	LastUsed     *lastused.LastUsedSignal `json:"last_used,omitempty"`
+	CostEstimate *cost.CostEstimate       `json:"cost_estimate,omitempty"`
 }
 
 // Snapshot is the on-disk envelope for an audit scan. The JSON layout is
