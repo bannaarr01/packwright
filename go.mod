@@ -6,10 +6,17 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.42.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.22
 	github.com/aws/aws-sdk-go-v2/service/acm v1.39.4
+	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.54.0
+	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.72.1
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.58.2
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.75.1
+	github.com/aws/aws-sdk-go-v2/service/codepipeline v1.47.4
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.1
+	github.com/aws/aws-sdk-go-v2/service/ecs v1.83.0
+	github.com/aws/aws-sdk-go-v2/service/efs v1.42.1
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.55.1
+	github.com/aws/aws-sdk-go-v2/service/pricing v1.42.7
+	github.com/aws/aws-sdk-go-v2/service/rds v1.119.3
 	github.com/aws/aws-sdk-go-v2/service/sts v1.43.1
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
@@ -32,9 +39,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.29 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.29 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.28 // indirect
-	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.54.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.11 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.27 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.12 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.29 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.1.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.31.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.4 // indirect
