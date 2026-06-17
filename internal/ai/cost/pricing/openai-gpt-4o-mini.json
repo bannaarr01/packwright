@@ -1,0 +1,7 @@
+{
+  "provider": "openai",
+  "model": "gpt-4o-mini",
+  "input_per_1k": 0.00015,
+  "output_per_1k": 0.0006,
+  "currency": "USD"
+}

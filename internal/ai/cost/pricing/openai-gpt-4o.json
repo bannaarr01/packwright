@@ -1,0 +1,7 @@
+{
+  "provider": "openai",
+  "model": "gpt-4o",
+  "input_per_1k": 0.0025,
+  "output_per_1k": 0.01,
+  "currency": "USD"
+}
