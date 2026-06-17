@@ -1,0 +1,7 @@
+{
+  "provider": "bedrock-anthropic",
+  "model": "claude-sonnet-4-6",
+  "input_per_1k": 0.003,
+  "output_per_1k": 0.015,
+  "currency": "USD"
+}

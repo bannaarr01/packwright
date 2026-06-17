@@ -1,0 +1,7 @@
+{
+  "provider": "ollama",
+  "model": "local",
+  "input_per_1k": 0,
+  "output_per_1k": 0,
+  "currency": "USD"
+}
