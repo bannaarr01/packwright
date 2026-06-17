@@ -10,6 +10,7 @@ import (
 
 	"github.com/bannaarr01/packwright/bootstrap"
 	"github.com/bannaarr01/packwright/config"
+	"github.com/bannaarr01/packwright/internal/ai/consent"
 	"github.com/bannaarr01/packwright/internal/manifest"
 	"github.com/bannaarr01/packwright/pack"
 )
@@ -36,7 +37,30 @@ func Launch(ctx context.Context) error {
 	logger := bootstrap.Init("tui")
 
 	loader := buildPaletteLoader(logger)
-	p := tea.NewProgram(newApp(logger, loader), tea.WithContext(ctx), tea.WithAltScreen())
+
+	// Resolve the home + config once so the /ai dispatch can gate on
+	// ai.Enabled and the chat panel can build a session. Failures are
+	// non-fatal: the TUI still runs, just with AI defaulting to off.
+	a := newApp(logger, loader)
+	if home, err := config.Home(); err == nil {
+		a.home = home
+	} else {
+		logger.Warn("tui: resolve home for AI", slog.Any("err", err))
+	}
+	if cfg, err := config.Load(); err == nil {
+		a.cfg = cfg
+	} else {
+		logger.Warn("tui: load config for AI", slog.Any("err", err))
+	}
+
+	p := tea.NewProgram(a, tea.WithContext(ctx), tea.WithAltScreen())
+
+	// Bridge the engine's synchronous write-consent prompt into the bubbletea
+	// loop: ShowModal hands the request to the program and blocks on a reply
+	// the chat panel fulfils from the user's keypress (ADR-0036). Restored on
+	// exit so a later run (or a test) starts from the deny-all default.
+	restoreModal := installConsentBridge(p)
+	defer restoreModal()
 
 	stopWatcher := startManifestWatcher(ctx, logger, p)
 	defer stopWatcher()
@@ -45,6 +69,20 @@ func Launch(ctx context.Context) error {
 		return fmt.Errorf("running tui program: %w", err)
 	}
 	return nil
+}
+
+// installConsentBridge points consent.ShowModal at the running program so the
+// chat panel can render the modal and return the user's decision to the
+// blocked engine goroutine. It returns a function that restores the previous
+// modal func.
+func installConsentBridge(p *tea.Program) func() {
+	prev := consent.ShowModal
+	consent.ShowModal = func(req consent.Request) consent.Decision {
+		reply := make(chan consent.Decision, 1)
+		p.Send(consentRequestMsg{req: req, reply: reply})
+		return <-reply
+	}
+	return func() { consent.ShowModal = prev }
 }
 
 // buildPaletteLoader returns the closure the root model calls on every
