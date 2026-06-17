@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "required": ["provider", "model", "input_per_1k", "output_per_1k"],
+  "additionalProperties": false,
+  "properties": {
+    "provider": { "type": "string", "minLength": 1 },
+    "model": { "type": "string", "minLength": 1 },
+    "input_per_1k": { "type": "number", "minimum": 0 },
+    "output_per_1k": { "type": "number", "minimum": 0 },
+    "currency": { "type": "string", "minLength": 1 }
+  }
+}

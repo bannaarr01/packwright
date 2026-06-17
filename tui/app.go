@@ -8,6 +8,10 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/bannaarr01/packwright/config"
+	"github.com/bannaarr01/packwright/internal/ai"
+	"github.com/bannaarr01/packwright/internal/ai/consent"
 )
 
 // mode identifies which sub-screen is currently active.
@@ -16,6 +20,7 @@ type mode int
 const (
 	modeLauncher mode = iota
 	modePalette
+	modeChat
 )
 
 // paletteLoader is the source of palette rows the root model consults at
@@ -33,9 +38,16 @@ type app struct {
 	mode     mode
 	launcher launcher
 	palette  palette
+	chat     chatModel
 	width    int
 	height   int
 	loadPal  paletteLoader
+	// cfg and home are set by Launch so the /ai dispatch can gate on
+	// ai.Enabled and the chat panel can construct a session. They are nil/""
+	// in the unit tests that build the app via newApp directly — harmless,
+	// since those tests never open the chat panel.
+	cfg  *config.Config
+	home string
 }
 
 // newApp constructs the root model. The logger receives palette-selection
@@ -81,9 +93,16 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.help.Width = m.Width
 		a.launcher.SetSize(m.Width, m.Height)
 		a.palette.SetSize(m.Width, max(1, m.Height-1))
+		if a.mode == modeChat {
+			a.chat, _ = a.chat.Update(msg)
+		}
 		return a, nil
 
 	case closePaletteMsg:
+		a.mode = modeLauncher
+		return a, nil
+
+	case leaveChatMsg:
 		a.mode = modeLauncher
 		return a, nil
 
@@ -92,6 +111,15 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.logger.Info("palette selection",
 				slog.String("slash", m.Slash),
 				slog.String("title", m.Title))
+		}
+		// /ai opens the AI chat panel (ADR-0033). When AI is enabled the panel
+		// builds a live session; when disabled it shows the setup hint. Every
+		// other slash returns to the launcher until command routing lands.
+		if m.Slash == ai.SlashCommand {
+			enabled := ai.Enabled(a.cfg)
+			a.chat = newChatModel(a.keys, a.logger, a.width, a.height, a.cfg, a.home, enabled)
+			a.mode = modeChat
+			return a, a.chat.initCmd()
 		}
 		a.mode = modeLauncher
 		return a, nil
@@ -102,9 +130,36 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case chatReadyMsg, aiStreamMsg:
+		// Engine results only matter while the panel is open; drop them
+		// otherwise (the user left chat before the turn finished).
+		if a.mode == modeChat {
+			var cmd tea.Cmd
+			a.chat, cmd = a.chat.Update(msg)
+			return a, cmd
+		}
+		return a, nil
+
+	case consentRequestMsg:
+		// A write-consent request must always be answered so the engine's
+		// blocked tool goroutine never leaks: route to the panel when open,
+		// otherwise deny (fail-closed, ADR-0036).
+		if a.mode == modeChat {
+			var cmd tea.Cmd
+			a.chat, cmd = a.chat.Update(msg)
+			return a, cmd
+		}
+		m.reply <- consent.Deny
+		return a, nil
+
 	case tea.KeyMsg:
 		if m.String() == "ctrl+c" {
 			return a, tea.Quit
+		}
+		if a.mode == modeChat {
+			var cmd tea.Cmd
+			a.chat, cmd = a.chat.Update(msg)
+			return a, cmd
 		}
 		if a.mode == modePalette {
 			var cmd tea.Cmd
@@ -123,6 +178,11 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if a.mode == modeChat {
+		var cmd tea.Cmd
+		a.chat, cmd = a.chat.Update(msg)
+		return a, cmd
+	}
 	if a.mode == modePalette {
 		var cmd tea.Cmd
 		a.palette, cmd = a.palette.Update(msg)
@@ -133,6 +193,11 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the active screen with the help row underneath.
 func (a app) View() string {
+	// The chat panel owns its full layout (header, scrollback, input/modal),
+	// so it renders without the launcher's help row underneath.
+	if a.mode == modeChat {
+		return a.chat.View()
+	}
 	var body string
 	if a.mode == modePalette {
 		body = a.palette.View()

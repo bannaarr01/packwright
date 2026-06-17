@@ -1,0 +1,7 @@
+{
+  "provider": "anthropic",
+  "model": "claude-opus-4-7",
+  "input_per_1k": 0.015,
+  "output_per_1k": 0.075,
+  "currency": "USD"
+}
