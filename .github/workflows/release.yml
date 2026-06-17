@@ -257,7 +257,7 @@ jobs:
           echo "::warning::macOS artifact is UNSIGNED (MACOS_* secrets not set). Users will see a Gatekeeper warning."
 
       - name: Upload darwin artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: darwin
           path: dist/*
@@ -394,7 +394,7 @@ jobs:
           echo "::warning::Windows installer is UNSIGNED (WIN_CERT_* secrets not set). SmartScreen will warn users on first launch."
 
       - name: Upload windows artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows
           path: dist/*
@@ -528,7 +528,7 @@ jobs:
           ls -la dist/
 
       - name: Upload linux artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-${{ matrix.arch }}
           path: dist/*
