@@ -1,0 +1,85 @@
+{
+  "region": "us-east-1",
+  "generated_at": "2026-01-01T00:00:00Z",
+  "ec2_instance": {
+    "t3.nano":     {"linux_per_hour": 0.0052, "windows_per_hour": 0.0098},
+    "t3.micro":    {"linux_per_hour": 0.0104, "windows_per_hour": 0.0196},
+    "t3.small":    {"linux_per_hour": 0.0208, "windows_per_hour": 0.0376},
+    "t3.medium":   {"linux_per_hour": 0.0416, "windows_per_hour": 0.0696},
+    "t3.large":    {"linux_per_hour": 0.0832, "windows_per_hour": 0.1252},
+    "t3.xlarge":   {"linux_per_hour": 0.1664, "windows_per_hour": 0.2304},
+    "t3.2xlarge":  {"linux_per_hour": 0.3328, "windows_per_hour": 0.4608},
+    "t4g.nano":    {"linux_per_hour": 0.0042},
+    "t4g.micro":   {"linux_per_hour": 0.0084},
+    "t4g.small":   {"linux_per_hour": 0.0168},
+    "t4g.medium":  {"linux_per_hour": 0.0336},
+    "t4g.large":   {"linux_per_hour": 0.0672},
+    "m5.large":    {"linux_per_hour": 0.096,  "windows_per_hour": 0.184},
+    "m5.xlarge":   {"linux_per_hour": 0.192,  "windows_per_hour": 0.368},
+    "m5.2xlarge":  {"linux_per_hour": 0.384,  "windows_per_hour": 0.736},
+    "m5.4xlarge":  {"linux_per_hour": 0.768,  "windows_per_hour": 1.472},
+    "m6i.large":   {"linux_per_hour": 0.096,  "windows_per_hour": 0.188},
+    "m6i.xlarge":  {"linux_per_hour": 0.192,  "windows_per_hour": 0.376},
+    "m7g.large":   {"linux_per_hour": 0.0816},
+    "m7g.xlarge":  {"linux_per_hour": 0.1632},
+    "c5.large":    {"linux_per_hour": 0.085,  "windows_per_hour": 0.173},
+    "c5.xlarge":   {"linux_per_hour": 0.17,   "windows_per_hour": 0.346},
+    "c6i.large":   {"linux_per_hour": 0.085,  "windows_per_hour": 0.177},
+    "c6i.xlarge":  {"linux_per_hour": 0.17,   "windows_per_hour": 0.354},
+    "r5.large":    {"linux_per_hour": 0.126,  "windows_per_hour": 0.214},
+    "r5.xlarge":   {"linux_per_hour": 0.252,  "windows_per_hour": 0.428},
+    "r6i.large":   {"linux_per_hour": 0.126,  "windows_per_hour": 0.218},
+    "r6i.xlarge":  {"linux_per_hour": 0.252,  "windows_per_hour": 0.436}
+  },
+  "ebs_volume": {
+    "gp2":      {"per_gb_month": 0.10},
+    "gp3":      {"per_gb_month": 0.08, "per_iops_month": 0.005, "per_throughput_month": 0.040},
+    "io1":      {"per_gb_month": 0.125, "per_iops_month": 0.065},
+    "io2":      {"per_gb_month": 0.125, "per_iops_month": 0.065},
+    "st1":      {"per_gb_month": 0.045},
+    "sc1":      {"per_gb_month": 0.015},
+    "standard": {"per_gb_month": 0.05}
+  },
+  "ebs_snapshot": {"per_gb_month": 0.05},
+  "eip":         {"idle_per_hour": 0.005},
+  "nat_gateway": {"per_hour": 0.045, "per_gb_processed": 0.045},
+  "elbv2_lb": {
+    "application": {"per_hour": 0.0225, "per_lcu_hour": 0.008},
+    "network":     {"per_hour": 0.0225, "per_lcu_hour": 0.006},
+    "gateway":     {"per_hour": 0.0125, "per_lcu_hour": 0.004}
+  },
+  "rds_instance": {
+    "db.t3.micro":   {"per_hour": 0.017,  "multi_az_scale": 2.0},
+    "db.t3.small":   {"per_hour": 0.034,  "multi_az_scale": 2.0},
+    "db.t3.medium":  {"per_hour": 0.068,  "multi_az_scale": 2.0},
+    "db.t3.large":   {"per_hour": 0.136,  "multi_az_scale": 2.0},
+    "db.t4g.medium": {"per_hour": 0.061,  "multi_az_scale": 2.0},
+    "db.t4g.large":  {"per_hour": 0.122,  "multi_az_scale": 2.0},
+    "db.m5.large":   {"per_hour": 0.171,  "multi_az_scale": 2.0},
+    "db.m5.xlarge":  {"per_hour": 0.342,  "multi_az_scale": 2.0},
+    "db.m6i.large":  {"per_hour": 0.171,  "multi_az_scale": 2.0},
+    "db.r5.large":   {"per_hour": 0.24,   "multi_az_scale": 2.0},
+    "db.r6i.large":  {"per_hour": 0.24,   "multi_az_scale": 2.0}
+  },
+  "rds_snapshot": {"per_gb_month": 0.095},
+  "efs": {
+    "standard": {"per_gb_month": 0.30},
+    "ia":       {"per_gb_month": 0.025},
+    "archive":  {"per_gb_month": 0.004}
+  },
+  "cw_logs": {
+    "per_gb_ingest": 0.50,
+    "per_gb_stored": 0.03,
+    "per_gb_scan":   0.005
+  },
+  "ecr_storage": {"per_gb_month": 0.10},
+  "s3_storage": {
+    "standard":             {"per_gb_month": 0.023},
+    "standard-ia":          {"per_gb_month": 0.0125},
+    "intelligent-tiering":  {"per_gb_month": 0.023},
+    "glacier-ir":           {"per_gb_month": 0.004},
+    "glacier-flexible":     {"per_gb_month": 0.0036},
+    "glacier-deep-archive": {"per_gb_month": 0.00099}
+  },
+  "codepipeline": {"per_pipeline_month": 1.00}
+}

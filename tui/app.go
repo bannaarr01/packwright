@@ -12,6 +12,7 @@ import (
 	"github.com/bannaarr01/packwright/config"
 	"github.com/bannaarr01/packwright/internal/ai"
 	"github.com/bannaarr01/packwright/internal/ai/consent"
+	"github.com/bannaarr01/packwright/internal/audit"
 )
 
 // mode identifies which sub-screen is currently active.
@@ -21,6 +22,7 @@ const (
 	modeLauncher mode = iota
 	modePalette
 	modeChat
+	modeAudit
 )
 
 // paletteLoader is the source of palette rows the root model consults at
@@ -39,6 +41,7 @@ type app struct {
 	launcher launcher
 	palette  palette
 	chat     chatModel
+	audit    auditModel
 	width    int
 	height   int
 	loadPal  paletteLoader
@@ -106,6 +109,10 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.mode = modeLauncher
 		return a, nil
 
+	case leaveAuditMsg:
+		a.mode = modeLauncher
+		return a, nil
+
 	case paletteSelectedMsg:
 		if a.logger != nil {
 			a.logger.Info("palette selection",
@@ -113,13 +120,20 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				slog.String("title", m.Title))
 		}
 		// /ai opens the AI chat panel (ADR-0033). When AI is enabled the panel
-		// builds a live session; when disabled it shows the setup hint. Every
-		// other slash returns to the launcher until command routing lands.
+		// builds a live session; when disabled it shows the setup hint.
 		if m.Slash == ai.SlashCommand {
 			enabled := ai.Enabled(a.cfg)
 			a.chat = newChatModel(a.keys, a.logger, a.width, a.height, a.cfg, a.home, enabled)
 			a.mode = modeChat
 			return a, a.chat.initCmd()
+		}
+		// /audit opens the inventory panel: scans, displays last-used
+		// + cost, and routes selected rows through the deletion tray
+		// + typed-DELETE consent.
+		if m.Slash == audit.SlashCommand {
+			a.audit = newAuditModel(a.keys, a.logger, a.width, a.height, a.cfg, a.home)
+			a.mode = modeAudit
+			return a, a.audit.initCmd()
 		}
 		a.mode = modeLauncher
 		return a, nil
@@ -136,6 +150,17 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.mode == modeChat {
 			var cmd tea.Cmd
 			a.chat, cmd = a.chat.Update(msg)
+			return a, cmd
+		}
+		return a, nil
+
+	case auditDoneMsg, auditDeleteDoneMsg:
+		// Audit panel results only matter while the panel is open;
+		// drop them otherwise (the user left audit before the scan
+		// or batch finished).
+		if a.mode == modeAudit {
+			var cmd tea.Cmd
+			a.audit, cmd = a.audit.Update(msg)
 			return a, cmd
 		}
 		return a, nil
@@ -161,6 +186,11 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.chat, cmd = a.chat.Update(msg)
 			return a, cmd
 		}
+		if a.mode == modeAudit {
+			var cmd tea.Cmd
+			a.audit, cmd = a.audit.Update(msg)
+			return a, cmd
+		}
 		if a.mode == modePalette {
 			var cmd tea.Cmd
 			a.palette, cmd = a.palette.Update(msg)
@@ -183,6 +213,11 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.chat, cmd = a.chat.Update(msg)
 		return a, cmd
 	}
+	if a.mode == modeAudit {
+		var cmd tea.Cmd
+		a.audit, cmd = a.audit.Update(msg)
+		return a, cmd
+	}
 	if a.mode == modePalette {
 		var cmd tea.Cmd
 		a.palette, cmd = a.palette.Update(msg)
@@ -197,6 +232,11 @@ func (a app) View() string {
 	// so it renders without the launcher's help row underneath.
 	if a.mode == modeChat {
 		return a.chat.View()
+	}
+	// The audit panel similarly owns its layout (header, table,
+	// status, typed-DELETE modal).
+	if a.mode == modeAudit {
+		return a.audit.View()
 	}
 	var body string
 	if a.mode == modePalette {
