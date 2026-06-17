@@ -7,7 +7,64 @@ and the project follows MVP-tagged pre-1.0 versioning (`v0.<mvp>.<patch>-mvp<N>`
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Added
+
+- **AI-assisted debugging (`/ai`), opt-in and off by default (ADR-0033).** A
+  bring-your-own-key assistant that explains AWS failures, searches logs, and
+  proposes fixes. The binding posture: read by default; mutate only with
+  explicit, per-call consent; never touch the hardcoded forbidden-tool list.
+- `internal/ai` — foundation gate (`Enabled`), the `/ai` entry point, and
+  per-session JSONL conversation transcripts under `<home>/ai/sessions/`.
+- `internal/ai/provider` — provider abstraction with streaming `Delta`s and four
+  implementations: Anthropic, OpenAI, Bedrock (via the AWS chain), and Ollama
+  (local, experimental).
+- `internal/ai/tools` — typed read / write / forbidden tool catalogue (17 read,
+  9 write) over `awsx` and the existing action runtimes. The registry refuses to
+  register or call any forbidden name (IAM credential creation, destructive S3,
+  self-bypass) and logs the attempt as a security event.
+- `internal/ai/consent` — per-call write-consent flow (Deny / Approve-once /
+  Approve-session, 1h session window) with an append-only audit log at
+  `<home>/ai/audit.jsonl` (ADR-0036).
+- `internal/ai/redact` — outbound redactor (independent of the log redactor) that
+  strips AWS access keys, secret-typed form fields, JWTs, and Bearer tokens from
+  every request, plus context builders for error cards and monitor panels
+  (ADR-0037).
+- `internal/ai/keys` — API-key storage in the OS keychain with an
+  environment-variable fallback; keys never reach `config.yaml` or the logs
+  (ADR-0038).
+- `internal/ai/cost` — token cost meter with embedded per-model pricing tables,
+  per-session / per-day budget caps, and a usage log at `<home>/ai/usage.jsonl`
+  (ADR-0039).
+- `internal/ai/egress` — outbound-host allowlist that pins an AI session's HTTP
+  traffic to exactly the configured provider; an empty allowlist (AI disabled)
+  blocks every host.
+- `internal/ai/chat` — the UI-agnostic engine that drives a turn end to end:
+  provider streaming, the read/write tool loop, consent, outbound redaction, and
+  cost metering, surfaced as a typed event stream.
+- `internal/ai/validate.go` — config hardening: the loader rejects any attempt to
+  enable a forbidden tool or disable a safety control (consent, redactor, egress)
+  via `config.yaml`.
+- `cmd/ai.go` — `packwright ai {setup,status,disable}`: pick a provider/model,
+  store the key in the keychain, and enable or disable AI.
+- TUI `/ai` chat panel (`tui/chat.go`) — token-streaming transcript, a
+  write-consent modal, and an always-visible cost meter.
+
+### Changed
+
+- `config.yaml` gains an opt-in `ai:` block (`enabled`, `provider`, `model`,
+  optional `auto_approve_tools`). Absent or `enabled: false` means no AI subsystem
+  initialises and no LLM host is ever contacted.
+- New third-party dependency: `github.com/99designs/keyring` — OS-keychain access
+  for AI API keys, the first dependency beyond cobra, justified by ADR-0038's
+  "never store the key in config" requirement.
+- `AGENTS.md` / `CLAUDE.md` — the "no `internal/*` packages" rule is relaxed to
+  allow domain packages under `internal/`; front-end wiring still routes through
+  the `cmd/` registry, not direct imports.
+
+> **Not yet wired (follow-up):** the GUI (Svelte/Wails) chat panel and the
+> "Ask AI" buttons on error cards / monitor panels. The engine is UI-agnostic
+> and ready (`chat.Session.SeedContext`, `redact.FromAppError` /
+> `FromMonitorPanel`); these surfaces are tracked in `feature/mvp5Test.md`.
 
 ## [v0.4.0-mvp4] — ecosystem + release: distribution, versioning, packaging, auto-update, usage log
 

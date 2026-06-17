@@ -104,7 +104,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -257,7 +257,7 @@ jobs:
           echo "::warning::macOS artifact is UNSIGNED (MACOS_* secrets not set). Users will see a Gatekeeper warning."
 
       - name: Upload darwin artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: darwin
           path: dist/*
@@ -280,7 +280,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -394,7 +394,7 @@ jobs:
           echo "::warning::Windows installer is UNSIGNED (WIN_CERT_* secrets not set). SmartScreen will warn users on first launch."
 
       - name: Upload windows artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows
           path: dist/*
@@ -422,14 +422,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Set up QEMU
         if: ${{ matrix.arch == 'arm64' }}
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64
 
@@ -528,7 +528,7 @@ jobs:
           ls -la dist/
 
       - name: Upload linux artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-${{ matrix.arch }}
           path: dist/*
@@ -591,7 +591,7 @@ jobs:
 
       - name: Publish GitHub Release
         if: ${{ env.IS_TEST != 'true' }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.TAG }}
           name: Packwright ${{ env.VERSION }}
