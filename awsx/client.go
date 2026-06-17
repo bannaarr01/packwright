@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/acm"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -22,6 +23,7 @@ type Client struct {
 	region  string
 	log     *slog.Logger
 	cache   *Cache
+	cfg     aws.Config
 
 	ec2API   ec2API
 	elbv2API elbv2API
@@ -83,6 +85,7 @@ func New(ctx context.Context, profile, region, cacheHome string, log *slog.Logge
 		region:   cfg.Region,
 		log:      log,
 		cache:    cache,
+		cfg:      cfg,
 		ec2API:   ec2.NewFromConfig(cfg),
 		elbv2API: elasticloadbalancingv2.NewFromConfig(cfg),
 		acmAPI:   acm.NewFromConfig(cfg),
@@ -101,3 +104,11 @@ func (c *Client) Region() string { return c.region }
 // want to introspect or clear cache state; production code uses the picker
 // methods on Client.
 func (c *Client) Cache() *Cache { return c.cache }
+
+// Config returns the underlying aws.Config the SDK service clients were built
+// from. Audit scanners (internal/audit) consume it to construct additional
+// typed service clients (RDS, EFS, S3, ECR, CloudWatch Logs, CodePipeline)
+// that awsx does not expose directly. Exposing the config here keeps the
+// "all AWS calls go through awsx" invariant honest without bloating Client
+// with a per-service accessor for every consumer.
+func (c *Client) Config() aws.Config { return c.cfg }
