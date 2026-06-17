@@ -12,6 +12,9 @@ package audit
 import (
 	"context"
 	"time"
+
+	"github.com/bannaarr01/packwright/internal/audit/cost"
+	"github.com/bannaarr01/packwright/internal/audit/lastused"
 )
 
 // Scanner is the unit of inventory work: one resource kind, one set of
@@ -48,10 +51,11 @@ type Scanner interface {
 	Scan(ctx context.Context, c *Client, emit ScannerEmitter) ([]Resource, error)
 }
 
-// Resource is the audit-layer view of a single AWS resource. Fields are a
-// superset of what every scanner can populate; a scanner leaves unknown
-// fields zero. LastUsed and CostEstimate are deliberately nil here —
-// ADR-0041 and ADR-0042 add them in later passes.
+// Resource is the audit-layer view of a single AWS resource. Fields are
+// a superset of what every scanner can populate; a scanner leaves
+// unknown fields zero. LastUsed and CostEstimate are populated by the
+// post-processing step in internal/audit/postprocess after every
+// scanner returns (ADR-0041 / ADR-0042).
 type Resource struct {
 	Kind         string
 	ID           string
@@ -66,14 +70,16 @@ type Resource struct {
 	CostEstimate *CostEstimate
 }
 
-// LastUsedSignal is the per-resource idleness summary populated by ADR-0041.
-// It is intentionally empty here so the audit scanner can land before the
-// idleness probe code; later PRs fill in the fields.
-type LastUsedSignal struct{}
+// LastUsedSignal is the per-resource idleness summary surfaced on every
+// Resource. The canonical definition lives in internal/audit/lastused
+// — this alias keeps the audit-layer call sites readable
+// (Resource.LastUsed is *LastUsedSignal, not *lastused.LastUsedSignal).
+type LastUsedSignal = lastused.LastUsedSignal
 
-// CostEstimate is the per-resource cost summary populated by ADR-0042.
-// Empty for the same reason as LastUsedSignal.
-type CostEstimate struct{}
+// CostEstimate is the per-resource cost summary surfaced on every
+// Resource. Alias to cost.CostEstimate for the same readability reason
+// as LastUsedSignal.
+type CostEstimate = cost.CostEstimate
 
 // EventType identifies which lifecycle event a scanner emitted.
 type EventType int
