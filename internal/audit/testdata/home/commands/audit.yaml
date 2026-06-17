@@ -1,0 +1,4 @@
+schema_version: packwright.manifest.v1
+kind: shell
+slash: /audit
+title: Audit AWS resources (read-only)
