@@ -74,17 +74,24 @@ type DeploySpec struct {
 }
 
 // Field is one entry in a manifest's form schema.
+//
+// Placeholder is display-only metadata (ADR-0051): a per-field example shown
+// in the input widget when the user has not yet typed a value. It is not a
+// default, not validation, and not consulted at runtime — the resolver in
+// internal/manifest/hints turns this plus the type-default catalogue into a
+// single string for the TUI / GUI form layers.
 type Field struct {
-	ID        string          `yaml:"id"`
-	Label     string          `yaml:"label"`
-	Type      FieldType       `yaml:"type"`
-	Required  bool            `yaml:"required,omitempty"`
-	Default   any             `yaml:"default,omitempty"`
-	Min       *int            `yaml:"min,omitempty"`
-	Max       *int            `yaml:"max,omitempty"`
-	Values    []string        `yaml:"values,omitempty"`
-	DependsOn []string        `yaml:"depends_on,omitempty"`
-	Validate  []ValidatorSpec `yaml:"validate,omitempty"`
+	ID          string          `yaml:"id"`
+	Label       string          `yaml:"label"`
+	Type        FieldType       `yaml:"type"`
+	Placeholder string          `yaml:"placeholder,omitempty"`
+	Required    bool            `yaml:"required,omitempty"`
+	Default     any             `yaml:"default,omitempty"`
+	Min         *int            `yaml:"min,omitempty"`
+	Max         *int            `yaml:"max,omitempty"`
+	Values      []string        `yaml:"values,omitempty"`
+	DependsOn   []string        `yaml:"depends_on,omitempty"`
+	Validate    []ValidatorSpec `yaml:"validate,omitempty"`
 }
 
 // ValidatorSpec is a manifest-declared validator. The engine recognises a

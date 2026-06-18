@@ -109,17 +109,24 @@ type DeploySpec struct {
 // validators. The Default field is `any` because YAML scalars decode to
 // strings, ints, bools, or sequences depending on the field's Type; the form
 // engine (PR-08/09) does the conversion when it knows the target widget.
+//
+// Placeholder (ADR-0051) is display-only metadata: a per-field example shown
+// in the input widget when the user has not yet typed a value. It is not a
+// default and not part of validation — Validate intentionally ignores it. The
+// resolver in hints/ combines this author override with the type-default
+// catalogue into the final hint string consumed by the form layers.
 type Field struct {
-	ID        string          `yaml:"id"`
-	Label     string          `yaml:"label"`
-	Type      FieldType       `yaml:"type"`
-	Required  bool            `yaml:"required,omitempty"`
-	Default   any             `yaml:"default,omitempty"`
-	Min       *int            `yaml:"min,omitempty"`
-	Max       *int            `yaml:"max,omitempty"`
-	Values    []string        `yaml:"values,omitempty"`
-	DependsOn []string        `yaml:"depends_on,omitempty"`
-	Validate  []ValidatorSpec `yaml:"validate,omitempty"`
+	ID          string          `yaml:"id"`
+	Label       string          `yaml:"label"`
+	Type        FieldType       `yaml:"type"`
+	Placeholder string          `yaml:"placeholder,omitempty"`
+	Required    bool            `yaml:"required,omitempty"`
+	Default     any             `yaml:"default,omitempty"`
+	Min         *int            `yaml:"min,omitempty"`
+	Max         *int            `yaml:"max,omitempty"`
+	Values      []string        `yaml:"values,omitempty"`
+	DependsOn   []string        `yaml:"depends_on,omitempty"`
+	Validate    []ValidatorSpec `yaml:"validate,omitempty"`
 }
 
 // ValidatorSpec is one cross-field or per-field validator entry. Rule names
