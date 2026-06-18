@@ -1,0 +1,14 @@
+id: validate-template-unresolved-dependencies
+priority: 60
+match:
+  aws_service: CloudFormation
+  aws_code: ValidationError
+  raw_regex: "[Uu]nresolved (?:resource )?dependencies?\\s*\\[?(?P<Refs>[^\\]\\.]+)\\]?"
+title: "Template references something that isn't declared"
+cause: "CloudFormation could not resolve the references {{ .Refs }}. A !Ref or Fn::GetAtt points at a Resource, Parameter, or Mapping name that the template does not declare (typically a typo or a copy/paste from another stack)."
+suggested:
+  - "Open the template and check the spelling of every !Ref / !GetAtt against the Resources, Parameters, and Mappings sections."
+  - "Common foot-gun: a !Ref to a resource that was renamed but missed in one place; grep the template for the old name."
+  - "If the reference is supposed to come from a parameter, confirm the parameter is declared in Parameters: at the top of the template."
+console_url: "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/intrinsic-function-reference-ref.html"
+retryable: true

@@ -11,6 +11,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/bannaarr01/packwright/internal/manifest/hints"
 	"github.com/bannaarr01/packwright/manifest"
 )
 
@@ -237,6 +238,17 @@ func renderField(f FieldSpec) (string, error) {
 	fmt.Fprintf(&b, "  - id: %s\n", id)
 	fmt.Fprintf(&b, "    label: %s\n", label)
 	fmt.Fprintf(&b, "    type: %s\n", f.Type)
+	// ADR-0051: every scaffolded field ships a commented placeholder line
+	// pre-filled with the catalogue default, so the override mechanism is
+	// discoverable. Commented out so the strict YAML loader treats it as
+	// metadata, not a real key — uncommenting is the author's opt-in.
+	if hint := hints.Lookup(string(f.Type)); hint != "" {
+		quoted, err := yamlScalar(hint)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&b, "    # placeholder: %s\n", quoted)
+	}
 	if f.Required {
 		b.WriteString("    required: true\n")
 	}

@@ -51,6 +51,7 @@ type Manifest struct {
 	Template      *TemplateSpec `yaml:"template,omitempty"`
 	Deploy        *DeploySpec   `yaml:"deploy,omitempty"`
 	Form          []Field       `yaml:"form,omitempty"`
+	Scaling       []ScalingSpec `yaml:"scaling,omitempty"`
 }
 
 // TemplateSpec describes where the underlying infrastructure template lives
@@ -74,17 +75,24 @@ type DeploySpec struct {
 }
 
 // Field is one entry in a manifest's form schema.
+//
+// Placeholder is display-only metadata (ADR-0051): a per-field example shown
+// in the input widget when the user has not yet typed a value. It is not a
+// default, not validation, and not consulted at runtime — the resolver in
+// internal/manifest/hints turns this plus the type-default catalogue into a
+// single string for the TUI / GUI form layers.
 type Field struct {
-	ID        string          `yaml:"id"`
-	Label     string          `yaml:"label"`
-	Type      FieldType       `yaml:"type"`
-	Required  bool            `yaml:"required,omitempty"`
-	Default   any             `yaml:"default,omitempty"`
-	Min       *int            `yaml:"min,omitempty"`
-	Max       *int            `yaml:"max,omitempty"`
-	Values    []string        `yaml:"values,omitempty"`
-	DependsOn []string        `yaml:"depends_on,omitempty"`
-	Validate  []ValidatorSpec `yaml:"validate,omitempty"`
+	ID          string          `yaml:"id"`
+	Label       string          `yaml:"label"`
+	Type        FieldType       `yaml:"type"`
+	Placeholder string          `yaml:"placeholder,omitempty"`
+	Required    bool            `yaml:"required,omitempty"`
+	Default     any             `yaml:"default,omitempty"`
+	Min         *int            `yaml:"min,omitempty"`
+	Max         *int            `yaml:"max,omitempty"`
+	Values      []string        `yaml:"values,omitempty"`
+	DependsOn   []string        `yaml:"depends_on,omitempty"`
+	Validate    []ValidatorSpec `yaml:"validate,omitempty"`
 }
 
 // ValidatorSpec is a manifest-declared validator. The engine recognises a
@@ -94,4 +102,30 @@ type ValidatorSpec struct {
 	Rule    string         `yaml:"rule"`
 	Message string         `yaml:"message,omitempty"`
 	Params  map[string]any `yaml:",inline,omitempty"`
+}
+
+// ScalingSpec declares one parameter the /scale slash command can mutate
+// against a deployed stack (ADR-0049). The YAML tags here MUST match the
+// canonical internal/manifest.ScalingSpec exactly so a manifest decoded
+// through either package sees the same field set. This shim type carries
+// the same fields so callers wired against the shim engine see the
+// scaling block as well.
+type ScalingSpec struct {
+	Param     string                     `yaml:"param"`
+	Label     string                     `yaml:"label,omitempty"`
+	Kind      string                     `yaml:"kind"`
+	Min       *int                       `yaml:"min,omitempty"`
+	Max       *int                       `yaml:"max,omitempty"`
+	Step      *int                       `yaml:"step,omitempty"`
+	Values    []string                   `yaml:"values,omitempty"`
+	EnvGuards map[string]ScalingEnvGuard `yaml:"env_guards,omitempty"`
+}
+
+// ScalingEnvGuard is one per-environment overlay on a ScalingSpec. Mirrors
+// internal/manifest.ScalingEnvGuard byte-for-byte; the comment there is the
+// authoritative description.
+type ScalingEnvGuard struct {
+	Min                 *int `yaml:"min,omitempty"`
+	Max                 *int `yaml:"max,omitempty"`
+	RequireConfirmation bool `yaml:"require_confirmation,omitempty"`
 }

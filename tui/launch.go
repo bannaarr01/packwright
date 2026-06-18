@@ -12,6 +12,7 @@ import (
 	"github.com/bannaarr01/packwright/config"
 	"github.com/bannaarr01/packwright/internal/ai/consent"
 	"github.com/bannaarr01/packwright/internal/manifest"
+	"github.com/bannaarr01/packwright/internal/record"
 	"github.com/bannaarr01/packwright/pack"
 )
 
@@ -44,14 +45,16 @@ func Launch(ctx context.Context) error {
 	a := newApp(logger, loader)
 	if home, err := config.Home(); err == nil {
 		a.home = home
+		a.store = record.NewStore(home)
 	} else {
-		logger.Warn("tui: resolve home for AI", slog.Any("err", err))
+		logger.Warn("tui: resolve home", slog.Any("err", err))
 	}
 	if cfg, err := config.Load(); err == nil {
 		a.cfg = cfg
 	} else {
-		logger.Warn("tui: load config for AI", slog.Any("err", err))
+		logger.Warn("tui: load config", slog.Any("err", err))
 	}
+	a.rebuildTree()
 
 	p := tea.NewProgram(a, tea.WithContext(ctx), tea.WithAltScreen())
 

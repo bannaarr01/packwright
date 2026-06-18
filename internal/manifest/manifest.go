@@ -74,6 +74,12 @@ var knownFieldTypes = map[FieldType]struct{}{
 // Manifest is the top-level structure decoded from a YAML manifest file. The
 // Template / Deploy / Form sections are kind-specific: only KindResource
 // populates Template + Deploy in MVP-1; other kinds keep them nil.
+//
+// Draft and CopiedFrom are MVP-7 metadata (ADR-0047). They live under the
+// "_"-prefixed root-key convention so any future "ephemeral metadata" key
+// (e.g. _archived, _pinned) can land without revisiting this struct. Callers
+// touch them through internal/manifest/draft.go helpers — IsDraft, MarkDraft,
+// Promote, CopiedFrom — rather than the fields directly.
 type Manifest struct {
 	SchemaVersion string        `yaml:"schema_version"`
 	Kind          Kind          `yaml:"kind"`
@@ -82,6 +88,10 @@ type Manifest struct {
 	Template      *TemplateSpec `yaml:"template,omitempty"`
 	Deploy        *DeploySpec   `yaml:"deploy,omitempty"`
 	Form          []Field       `yaml:"form,omitempty"`
+	Scaling       []ScalingSpec `yaml:"scaling,omitempty"`
+
+	Draft      bool   `yaml:"_draft,omitempty"`
+	CopiedFrom string `yaml:"_copied_from,omitempty"`
 }
 
 // TemplateSpec describes the infrastructure-as-code template that backs a
@@ -109,17 +119,24 @@ type DeploySpec struct {
 // validators. The Default field is `any` because YAML scalars decode to
 // strings, ints, bools, or sequences depending on the field's Type; the form
 // engine (PR-08/09) does the conversion when it knows the target widget.
+//
+// Placeholder (ADR-0051) is display-only metadata: a per-field example shown
+// in the input widget when the user has not yet typed a value. It is not a
+// default and not part of validation — Validate intentionally ignores it. The
+// resolver in hints/ combines this author override with the type-default
+// catalogue into the final hint string consumed by the form layers.
 type Field struct {
-	ID        string          `yaml:"id"`
-	Label     string          `yaml:"label"`
-	Type      FieldType       `yaml:"type"`
-	Required  bool            `yaml:"required,omitempty"`
-	Default   any             `yaml:"default,omitempty"`
-	Min       *int            `yaml:"min,omitempty"`
-	Max       *int            `yaml:"max,omitempty"`
-	Values    []string        `yaml:"values,omitempty"`
-	DependsOn []string        `yaml:"depends_on,omitempty"`
-	Validate  []ValidatorSpec `yaml:"validate,omitempty"`
+	ID          string          `yaml:"id"`
+	Label       string          `yaml:"label"`
+	Type        FieldType       `yaml:"type"`
+	Placeholder string          `yaml:"placeholder,omitempty"`
+	Required    bool            `yaml:"required,omitempty"`
+	Default     any             `yaml:"default,omitempty"`
+	Min         *int            `yaml:"min,omitempty"`
+	Max         *int            `yaml:"max,omitempty"`
+	Values      []string        `yaml:"values,omitempty"`
+	DependsOn   []string        `yaml:"depends_on,omitempty"`
+	Validate    []ValidatorSpec `yaml:"validate,omitempty"`
 }
 
 // ValidatorSpec is one cross-field or per-field validator entry. Rule names
@@ -131,6 +148,40 @@ type ValidatorSpec struct {
 	Rule    string         `yaml:"rule"`
 	Message string         `yaml:"message,omitempty"`
 	Params  map[string]any `yaml:",inline"`
+}
+
+// ScalingSpec declares one parameter the /scale slash command can mutate
+// against a deployed stack (ADR-0049). Param must resolve to a form[].id
+// in the same manifest — Validate enforces that linkage at load time. The
+// kind/min/max/step/values fields override the form field's metadata only
+// for the scaling UI; the form itself keeps its own widget. EnvGuards
+// overlays per-environment min/max and an optional require_confirmation
+// flag that wires into the ADR-0036 consent modal.
+//
+// The runtime form of this type lives in internal/scaling — cmd_scale.go
+// converts the manifest's []ScalingSpec into []scaling.Spec before calling
+// BuildParams. Keeping the YAML representation here keeps internal/scaling
+// free of any decoder dependency.
+type ScalingSpec struct {
+	Param     string                     `yaml:"param"`
+	Label     string                     `yaml:"label,omitempty"`
+	Kind      string                     `yaml:"kind"`
+	Min       *int                       `yaml:"min,omitempty"`
+	Max       *int                       `yaml:"max,omitempty"`
+	Step      *int                       `yaml:"step,omitempty"`
+	Values    []string                   `yaml:"values,omitempty"`
+	EnvGuards map[string]ScalingEnvGuard `yaml:"env_guards,omitempty"`
+}
+
+// ScalingEnvGuard is one per-environment overlay on a ScalingSpec. The Min
+// and Max overrides win over the spec's own bounds when non-nil
+// (intentionally — per ADR-0049 the env guard is the tighter authority).
+// RequireConfirmation flags this env as one whose /scale invocations must
+// surface the ADR-0036 consent modal before ExecuteChangeSet runs.
+type ScalingEnvGuard struct {
+	Min                 *int `yaml:"min,omitempty"`
+	Max                 *int `yaml:"max,omitempty"`
+	RequireConfirmation bool `yaml:"require_confirmation,omitempty"`
 }
 
 // CanRun reports whether MVP-1 supports this manifest's kind at runtime. It

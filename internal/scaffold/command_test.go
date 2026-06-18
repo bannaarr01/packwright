@@ -322,6 +322,64 @@ func TestGenerate_QuotesTitleWithColon(t *testing.T) {
 	}
 }
 
+// TestGenerate_EmitsCommentedPlaceholderForTypedField is the ADR-0051
+// scaffolder hook: every typed field with a catalogue entry must ship a
+// commented `# placeholder:` line pre-filled with the catalogue default. The
+// line is a comment (leading `#`), so strict YAML decoding via canonical.Load
+// must still accept the output — the assertion below load-checks the
+// generated YAML to confirm.
+func TestGenerate_EmitsCommentedPlaceholderForTypedField(t *testing.T) {
+	spec := Spec{
+		Kind:  manifest.KindResource,
+		Slash: "/x",
+		Title: "X",
+		Template: &TemplateSpec{
+			Kind: "cloudformation",
+			Path: "x.yaml",
+		},
+		Deploy: &DeploySpec{Driver: "script", Script: "d.sh"},
+		Form: []FieldSpec{
+			{ID: "VpcId", Label: "VPC", Type: manifest.TypeAWSVpcID, Required: true},
+			// Generic string has an empty catalogue entry; no comment line.
+			{ID: "Name", Label: "Name", Type: manifest.TypeString},
+		},
+	}
+	out, err := Generate(spec)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	body := string(out)
+	if !strings.Contains(body, `# placeholder: vpc-0abc1234567890abcdef`) {
+		t.Errorf("Generate output missing commented placeholder for aws/vpc-id:\n%s", body)
+	}
+	// The generic string field's catalogue entry is intentionally empty
+	// (ADR-0051 §"over-hinting"), so no comment line should appear under
+	// the `Name` field.
+	nameIdx := strings.Index(body, "id: Name")
+	if nameIdx < 0 {
+		t.Fatalf("Generate output missing Name field:\n%s", body)
+	}
+	after := body[nameIdx:]
+	if strings.HasPrefix(strings.TrimSpace(strings.SplitN(after, "\n", 4)[3]), "# placeholder") {
+		t.Errorf("Generate emitted a placeholder comment for an empty catalogue type:\n%s", body)
+	}
+
+	// Strict YAML round-trip: the comment must not be parsed as a key.
+	path := filepath.Join(t.TempDir(), "x.yaml")
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		t.Fatalf("write tempfile: %v", err)
+	}
+	loaded, err := canonical.Load(path)
+	if err != nil {
+		t.Fatalf("canonical.Load on scaffolded YAML failed: %v\n---\n%s", err, out)
+	}
+	for _, f := range loaded.Form {
+		if f.Placeholder != "" {
+			t.Errorf("Form[%s].Placeholder = %q, want empty (the line is a comment)", f.ID, f.Placeholder)
+		}
+	}
+}
+
 // TestGenerate_UnknownKindIsTypedError documents the failure mode when a
 // caller invents a new kind: the error must surface the bad value rather
 // than panic on a nil template lookup.

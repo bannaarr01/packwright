@@ -184,6 +184,61 @@ func cases() []catalogueCase {
 			},
 			wantInRaw: []string{"/healthz"},
 		},
+		{
+			name: "validate-template-unknown-resource-type",
+			id:   "validate-template-unknown-resource-type",
+			raw:  "Unknown resource type: 'AWS::Banana::Plant'",
+			ctx: errors.Context{
+				AWSService: "CloudFormation",
+				AWSCode:    "ValidationError",
+				Region:     "us-east-1",
+			},
+			wantInRaw: []string{"AWS::Banana::Plant"},
+		},
+		{
+			name: "validate-template-unresolved-dependencies",
+			id:   "validate-template-unresolved-dependencies",
+			raw:  "Unresolved resource dependencies [WebVpc] in the Resources block of the template",
+			ctx: errors.Context{
+				AWSService: "CloudFormation",
+				AWSCode:    "ValidationError",
+				Region:     "us-east-1",
+			},
+			wantInRaw: []string{"WebVpc"},
+		},
+		{
+			name: "validate-template-format-error",
+			id:   "validate-template-format-error",
+			raw:  "Template format error: At least one Resources member must be defined",
+			ctx: errors.Context{
+				AWSService: "CloudFormation",
+				AWSCode:    "ValidationError",
+				Region:     "us-east-1",
+			},
+			wantInRaw: []string{"At least one Resources member"},
+		},
+		{
+			name: "validate-template-invalid-property",
+			id:   "validate-template-invalid-property",
+			raw:  "Encountered unsupported property BucketNme",
+			ctx: errors.Context{
+				AWSService: "CloudFormation",
+				AWSCode:    "ValidationError",
+				Region:     "us-east-1",
+			},
+			wantInRaw: []string{"BucketNme"},
+		},
+		{
+			name: "validate-template-too-large",
+			id:   "validate-template-too-large",
+			raw:  "Member must have length less than or equal to 51200",
+			ctx: errors.Context{
+				AWSService: "CloudFormation",
+				AWSCode:    "ValidationError",
+				Region:     "us-east-1",
+			},
+			wantInRaw: []string{"51,200-byte"},
+		},
 	}
 }
 

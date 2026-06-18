@@ -15,6 +15,28 @@ type ValidationError struct {
 	Reason string
 }
 
+// ErrDraftNotPromoted is the typed error Validate returns when the manifest
+// passes every structural rule but carries `_draft: true` (ADR-0047). The
+// action engine surfaces this through its existing error pipeline so the UI
+// can render "Promote this draft before deploying" instead of a generic
+// validation failure. Load tolerates the error specifically so a freshly
+// scaffolded or copied draft still appears in the watcher / sidebar.
+//
+// Callers detect it with errors.As; the Slash field carries the manifest's
+// slash so the surface text reads naturally.
+type ErrDraftNotPromoted struct {
+	Slash string
+}
+
+// Error renders the draft-not-promoted error. The phrasing names the slash
+// so error cards in the TUI / GUI carry enough context to act on.
+func (e *ErrDraftNotPromoted) Error() string {
+	if e == nil || e.Slash == "" {
+		return "manifest: draft has not been promoted — run /promote-template before deploying"
+	}
+	return fmt.Sprintf("manifest: %s: draft has not been promoted — run /promote-template %s before deploying", e.Slash, e.Slash)
+}
+
 // Error formats the validation error as "manifest: <path>: <reason>". The
 // "manifest:" prefix mirrors the Load wrapper so concatenated error chains
 // still read naturally.
@@ -74,7 +96,48 @@ func Validate(m *Manifest) error {
 	if err := validateKindSections(m); err != nil {
 		return err
 	}
-	return validateFields(m.Form)
+	if err := validateFields(m.Form); err != nil {
+		return err
+	}
+	if err := validateScaling(m.Scaling, m.Form); err != nil {
+		return err
+	}
+
+	// Draft check runs last so the error reports a slash that already
+	// passed structural validation; if a draft is structurally broken,
+	// users see the broken-field error first (the more actionable one)
+	// and the draft-not-promoted error second on the next attempt.
+	if IsDraft(m) {
+		return &ErrDraftNotPromoted{Slash: m.Slash}
+	}
+	return nil
+}
+
+// validateScaling enforces the single rule the scaling block carries on its
+// own behalf (ADR-0049): every scaling[].param must resolve to a form[].id.
+// The kind/min/max/step/values fields are not checked here — they overlay
+// the form's metadata for the /scale UI only, and the scaling package
+// validates them at BuildParams time. The form-field set is the source of
+// truth for what parameters can be touched at all.
+func validateScaling(specs []ScalingSpec, fields []Field) error {
+	if len(specs) == 0 {
+		return nil
+	}
+	formIDs := make(map[string]struct{}, len(fields))
+	for _, f := range fields {
+		formIDs[f.ID] = struct{}{}
+	}
+	for i, s := range specs {
+		path := fmt.Sprintf("scaling[%d].param", i)
+		if s.Param == "" {
+			return invalid(path, "is required")
+		}
+		if _, ok := formIDs[s.Param]; !ok {
+			return invalid(path,
+				fmt.Sprintf("references unknown form field %q", s.Param))
+		}
+	}
+	return nil
 }
 
 // validateKindSections enforces which top-level sections each kind may carry.

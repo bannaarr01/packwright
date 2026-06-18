@@ -1,0 +1,14 @@
+id: validate-template-invalid-property
+priority: 50
+match:
+  aws_service: CloudFormation
+  aws_code: ValidationError
+  raw_regex: "[Ee]ncountered unsupported property\\s+(?P<Property>[A-Za-z0-9._-]+)"
+title: "Template uses an unsupported property"
+cause: "The property {{ .Property }} is not valid for the resource it sits under. Common causes are a typo (CertificateArn vs CertificateARN), using a property from a different service (TargetGroupArn under a LoadBalancer instead of a Listener), or a property added in a newer AWS API version than this account/region supports."
+suggested:
+  - "Open the AWS resource reference page for the resource type and confirm {{ .Property }} is listed (search for AWS:: <Service>:: <Type>)."
+  - "If the property exists in newer docs only, check the CFN registry for the resource type version and your region's support."
+  - "Compare the failing resource against a known-good sibling in the same template — the diff is usually a single property name."
+console_url: "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-template-resource-type-ref.html"
+retryable: true

@@ -13,11 +13,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
 	"sync"
 	"text/template"
 	"time"
 
 	"github.com/bannaarr01/packwright/awsx"
+	"github.com/bannaarr01/packwright/internal/update"
+	"github.com/bannaarr01/packwright/internal/validate"
 	"github.com/bannaarr01/packwright/manifest"
 	"github.com/bannaarr01/packwright/render/cfn"
 )
@@ -93,10 +98,52 @@ type RecordHook func(ctx context.Context, stackName string, deployErr error)
 type Option func(*config)
 
 type config struct {
-	baseDir    string
-	events     cfn.EventsAPI
-	az         AZLookup
-	recordHook RecordHook
+	baseDir            string
+	events             cfn.EventsAPI
+	az                 AZLookup
+	recordHook         RecordHook
+	validatorsDisabled bool
+	pipeline           validate.Pipeline
+	log                *slog.Logger
+	update             *UpdateOptions
+}
+
+// UpdateOptions switches Execute into the ADR-0048 in-place update flow:
+// the engine bypasses the deploy script and instead drives the change-set
+// lifecycle (Create → Describe → consent → Execute) directly through
+// internal/update. The script driver remains the runtime for `create`
+// deploys; this is the only ADR-0008 carve-out.
+type UpdateOptions struct {
+	// StackName is the existing stack to update. When empty, Execute
+	// reads STACK_NAME from the resolved env (the same env var the
+	// script driver consumes).
+	StackName string
+	// PreviousParameters is the snapshot of the stack's current
+	// parameter values, used to compute parameter deltas in the diff.
+	// Caller (PR-02 stack-record loader) supplies this; nil is
+	// acceptable and disables the old → new comparison.
+	PreviousParameters map[string]string
+	// Capabilities lists the IAM capabilities CFN must acknowledge to
+	// process this template. ADR-0048 will eventually surface these
+	// through the manifest schema; until then, the caller (stack-record
+	// loader / form layer) forwards them on each update.
+	Capabilities []string
+	// API is the change-set client. Required.
+	API cfn.ChangeSetAPI
+	// Consent is the replacement-consent gate (ADR-0036). Nil = always
+	// approve (suitable for headless tests).
+	Consent update.ConsentGate
+	// Harvest is the post-execute record write (PR-02). Nil = skip.
+	Harvest update.Harvester
+	// Stream is the CFN-events seam used after Execute. Nil = no
+	// streaming (the caller can build their own poller off StackName).
+	Stream update.EventStreamer
+	// PollInterval is the DescribeChangeSet poll cadence. Zero = 1 Hz.
+	PollInterval time.Duration
+	// Description optionally annotates the change set inside AWS.
+	Description string
+	// ChangeSetName overrides the auto-generated name; tests pin it.
+	ChangeSetName string
 }
 
 // WithBaseDir tells the renderer how to interpret the manifest's relative
@@ -126,6 +173,46 @@ func WithAZLookup(fn AZLookup) Option {
 // hook (the default) disables the call.
 func WithRecordHook(hook RecordHook) Option {
 	return func(c *config) { c.recordHook = hook }
+}
+
+// WithValidators toggles the pre-render template validator pipeline (ADR-0050).
+// Enabled by default; passing false threads the --no-validate flag through to
+// Execute so the YAML lint and CloudFormation ValidateTemplate stages are
+// skipped. The skip is session-scoped and never persisted; Execute logs once
+// when validators are disabled so post-hoc auditing of the operational log
+// remains honest.
+func WithValidators(enabled bool) Option {
+	return func(c *config) { c.validatorsDisabled = !enabled }
+}
+
+// WithValidatorPipeline injects a custom validate.Pipeline. The default is
+// validate.NewDefault(), which runs the YAML lint stage and the CFN
+// ValidateTemplate stage. Tests inject a fake pipeline to assert on the
+// engine's response to specific findings without depending on a live AWS
+// account.
+func WithValidatorPipeline(p validate.Pipeline) Option {
+	return func(c *config) { c.pipeline = p }
+}
+
+// WithLogger overrides the slog.Logger Execute uses for operational lines
+// (e.g. "validators skipped via --no-validate"). Defaults to slog.Default()
+// when unset. The deploy script's stdout/stderr is unaffected — it always
+// flows through Result.Events regardless of this logger.
+func WithLogger(l *slog.Logger) Option {
+	return func(c *config) { c.log = l }
+}
+
+// WithUpdate switches Execute into the in-place update flow (ADR-0048).
+// When set, Execute bypasses the script driver and drives a change-set
+// preview / execute through internal/update instead. The supplied
+// UpdateOptions carry the change-set client, consent gate, harvester, and
+// streaming seam. Passing a nil API panics at call time — the update
+// branch cannot proceed without it.
+func WithUpdate(opts UpdateOptions) Option {
+	return func(c *config) {
+		o := opts
+		c.update = &o
+	}
 }
 
 // Execute validates the inputs against the manifest, writes parameters.json,
@@ -174,6 +261,19 @@ func Execute(
 		return nil, fmt.Errorf("resource: resolve env: %w", err)
 	}
 	stackName := env["STACK_NAME"]
+
+	if failure, err := runValidators(ctx, &cfg, m, inputs, stackName, awsClient); err != nil {
+		return nil, err
+	} else if failure != nil {
+		return nil, failure
+	}
+
+	// ADR-0048 update branch: skip the script driver entirely and drive
+	// the change-set lifecycle through internal/update. The deploy script
+	// remains the runtime for `create` deploys (cfg.update == nil).
+	if cfg.update != nil {
+		return executeUpdate(ctx, m, inputs, cfg, stackName)
+	}
 
 	r := &cfn.Renderer{BaseDir: cfg.baseDir}
 	if err := r.Render(m, map[string]any(inputs)); err != nil {
@@ -289,6 +389,151 @@ func resolveEnv(envSpec map[string]string, inputs Inputs, awsClient *awsx.Client
 	return out, nil
 }
 
+// executeUpdate is the ADR-0048 update-flow branch of Execute. It reads
+// the template body from the manifest, builds the change-set input from
+// the form snapshot, calls update.Stack, and adapts the typed StackResult
+// onto the same *Result shape Execute returns for the script-deploy path.
+// The Events channel multiplexes the streamed cfn.StackEvents into our
+// Event type (Source=SourceCFN) so consumers (TUI/GUI) don't need to
+// distinguish the two paths.
+func executeUpdate(
+	ctx context.Context,
+	m *manifest.Manifest,
+	inputs Inputs,
+	cfg config,
+	stackName string,
+) (*Result, error) {
+	opts := cfg.update
+	if opts.API == nil {
+		return nil, fmt.Errorf("resource: update mode requires a ChangeSetAPI")
+	}
+	name := opts.StackName
+	if name == "" {
+		name = stackName
+	}
+	if name == "" {
+		return nil, fmt.Errorf("resource: update mode requires a stack name (set UpdateOptions.StackName or manifest env STACK_NAME)")
+	}
+
+	// The change-set API consumes the template body inline. We resolve
+	// the manifest's template path against cfg.baseDir and read it from
+	// disk — there is no script involvement.
+	if m.Template == nil || m.Template.Path == "" {
+		return nil, fmt.Errorf("resource: update mode requires manifest.template.path")
+	}
+	templatePath := filepath.Join(cfg.baseDir, m.Template.Path)
+	if filepath.IsAbs(m.Template.Path) {
+		templatePath = m.Template.Path
+	}
+	body, err := os.ReadFile(templatePath)
+	if err != nil {
+		return nil, fmt.Errorf("resource: read template: %w", err)
+	}
+
+	params := parametersFromInputs(m, inputs)
+
+	res, err := update.Stack(ctx, update.StackInput{
+		StackName:          name,
+		TemplateBody:       string(body),
+		Parameters:         params,
+		PreviousParameters: opts.PreviousParameters,
+		Capabilities:       append([]string(nil), opts.Capabilities...),
+		Description:        opts.Description,
+		ChangeSetName:      opts.ChangeSetName,
+	}, update.StackOptions{
+		API:          opts.API,
+		Consent:      opts.Consent,
+		Harvest:      opts.Harvest,
+		Stream:       opts.Stream,
+		PollInterval: opts.PollInterval,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return adaptUpdateResult(name, res), nil
+}
+
+// adaptUpdateResult wraps an update.StackResult onto the *Result shape
+// callers consume. Outputs and Status are left zero; the caller surfaces
+// res.Notice / res.Diff directly through the typed StackResult attached
+// to ctx in PR-09 / PR-10.
+//
+// For the no-changes / consent-denied paths the wrapped channel is
+// already closed (matching the script-deploy convention of "Events
+// channel closed once both sources are done").
+func adaptUpdateResult(stackName string, r update.StackResult) *Result {
+	events := make(chan Event, 8)
+	go func() {
+		defer close(events)
+		if r.Events == nil {
+			return
+		}
+		for ev := range r.Events {
+			e := ev
+			events <- Event{Time: e.Time, Source: SourceCFN, Stack: &e}
+		}
+	}()
+	return &Result{
+		StackName: stackName,
+		Events:    events,
+		wait:      func() error { return nil },
+	}
+}
+
+// parametersFromInputs converts the engine's typed Inputs into the
+// string-keyed map the change-set API requires. Only manifest-declared
+// fields are emitted, matching the renderer's MarshalParameters convention.
+func parametersFromInputs(m *manifest.Manifest, inputs Inputs) map[string]string {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]string, len(inputs))
+	for _, f := range m.Form {
+		v, ok := inputs[f.ID]
+		if !ok {
+			continue
+		}
+		s := stringifyInput(v)
+		if s == "" {
+			continue
+		}
+		out[f.ID] = s
+	}
+	return out
+}
+
+// stringifyInput returns the wire form of a manifest-input value. Strings
+// pass through; numbers / bools stringify; comma-joined for slices.
+func stringifyInput(v any) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case []string:
+		joined := ""
+		for i, s := range x {
+			if i > 0 {
+				joined += ","
+			}
+			joined += s
+		}
+		return joined
+	case int:
+		return fmt.Sprintf("%d", x)
+	case int64:
+		return fmt.Sprintf("%d", x)
+	case bool:
+		if x {
+			return "true"
+		}
+		return "false"
+	case nil:
+		return ""
+	default:
+		return fmt.Sprintf("%v", x)
+	}
+}
+
 // subnetAZLookup adapts awsx.Client.ListSubnets (which is VPC-scoped) to the
 // per-subnet AZLookup signature the distinct-az validator expects. It pulls
 // the VPC ID from inputs["VpcId"] — the conventional field name shared across
@@ -315,4 +560,80 @@ func subnetAZLookup(awsClient *awsx.Client, inputs Inputs) AZLookup {
 		}
 		return "", fmt.Errorf("subnet %s not found in VPC %s", subnetID, vpcID)
 	}
+}
+
+// runValidators applies the template validator pipeline (ADR-0050). When
+// validators are disabled via WithValidators(false), it logs one operational
+// line and returns without touching the AWS network. Otherwise it builds the
+// default pipeline against the manifest's template paths and the awsClient's
+// CloudFormation surface, runs it, and returns a typed ValidationFailure on
+// the first error-severity finding so the existing error model (ADR-0016)
+// can render it.
+//
+// The cfg may carry a caller-supplied pipeline (tests, future PR-06); when
+// nil, the default pipeline is used. Findings that are not error-severity
+// (capability and parameter infos from Stage 2) are dropped here — PR-06
+// will surface them through the form flow once the update path lands.
+func runValidators(
+	ctx context.Context,
+	cfg *config,
+	m *manifest.Manifest,
+	inputs Inputs,
+	stackName string,
+	awsClient *awsx.Client,
+) (*validate.ValidationFailure, error) {
+	log := cfg.log
+	if log == nil {
+		log = slog.Default()
+	}
+	if cfg.validatorsDisabled {
+		log.Info("validators skipped via --no-validate", slog.String("stack", stackName))
+		return nil, nil
+	}
+	if m.Template == nil || m.Template.Path == "" {
+		// No template declared: nothing for the validators to inspect.
+		// resource_runner.Validate already rejects manifests with no
+		// template spec; the field-level guard here keeps Execute usable
+		// for tests that construct a partial manifest by hand.
+		return nil, nil
+	}
+
+	pipeline := cfg.pipeline
+	useDefaultCFN := pipeline == nil
+	if pipeline == nil {
+		pipeline = validate.NewDefault()
+	}
+
+	in := validate.Input{
+		TemplatePath: resolveValidatorPath(cfg.baseDir, m.Template.Path),
+		StackName:    stackName,
+	}
+	if m.Template.ParametersFile != "" {
+		in.ParametersPath = resolveValidatorPath(cfg.baseDir, m.Template.ParametersFile)
+	}
+	// Only build the live CloudFormation client when the engine is running
+	// the default pipeline. Tests that inject their own pipeline pass the
+	// fake AWS surface through the pipeline itself, so the engine never
+	// needs to touch awsClient.CloudFormation() on the test path — that
+	// matters because awsx.NewForTest produces a Client without SDK
+	// config and CloudFormation() would panic.
+	if useDefaultCFN {
+		in.AWS = awsClient.CloudFormation()
+	}
+
+	findings, err := pipeline.Run(ctx, in)
+	if err != nil {
+		return nil, fmt.Errorf("resource: validate: %w", err)
+	}
+	if failure := validate.FailureFromFindings(findings, stackName, map[string]any(inputs)); failure != nil {
+		return failure, nil
+	}
+	return nil, nil
+}
+
+func resolveValidatorPath(baseDir, p string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(baseDir, p)
 }

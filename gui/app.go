@@ -40,6 +40,11 @@ type App struct {
 	// the runtime tears down its event subsystem.
 	watcherStop func()
 
+	// workspaceWatcherStop tears down the workspace-watcher bridge spawned
+	// by startup (see startWorkspaceWatcher). Same lifecycle as
+	// watcherStop; both are stopped during shutdown.
+	workspaceWatcherStop func()
+
 	// quit is the function invoked when the cobra ctx fires before the user
 	// closes the window. Defaults to runtime.Quit; tests inject a fake so
 	// the bridge lifecycle can be verified without a live Wails runtime.
@@ -96,6 +101,7 @@ func (a *App) startup(wailsCtx context.Context) {
 	}()
 
 	a.startPaletteWatcher(bridgeCtx)
+	a.startWorkspaceWatcher(bridgeCtx)
 }
 
 // shutdown is invoked by Wails just before the runtime tears down. It
@@ -110,6 +116,10 @@ func (a *App) shutdown(_ context.Context) {
 	if a.watcherStop != nil {
 		a.watcherStop()
 		a.watcherStop = nil
+	}
+	if a.workspaceWatcherStop != nil {
+		a.workspaceWatcherStop()
+		a.workspaceWatcherStop = nil
 	}
 	a.logger.Info("gui shutdown")
 }

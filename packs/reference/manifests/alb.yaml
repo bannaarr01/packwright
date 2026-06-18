@@ -72,6 +72,39 @@ form:
     type: aws/acm-arn
     required: true
 
+  - id: DesiredCount
+    label: Desired tasks
+    type: int
+    default: 2
+    min: 0
+    max: 50
+
+  - id: TaskCpu
+    label: Task CPU
+    type: enum
+    values: ["256", "512", "1024", "2048", "4096"]
+    default: "256"
+
+# Scaling targets declared per ADR-0049. Each entry pins at an existing
+# form field by id; /scale renders ONLY these fields, pre-filled with the
+# stack record's current values. The env_guards on prd shrink the bound
+# and require ADR-0036 consent before ExecuteChangeSet runs.
+scaling:
+  - param: DesiredCount
+    label: Desired tasks
+    kind: integer
+    min: 1
+    max: 50
+    step: 1
+    env_guards:
+      prd: { min: 2, max: 20, require_confirmation: true }
+      dev: { min: 0, max: 50 }
+
+  - param: TaskCpu
+    label: Task CPU
+    kind: enum
+    values: ["256", "512", "1024", "2048", "4096"]
+
 # `observe` is a top-level resource-manifest key per ADR-0012 and
 # featureDetails.md §7. PR-05's initial `Manifest` struct doesn't list it
 # yet — the manifest loader needs an Observe field added before this

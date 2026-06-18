@@ -1,0 +1,14 @@
+id: validate-template-unknown-resource-type
+priority: 60
+match:
+  aws_service: CloudFormation
+  aws_code: ValidationError
+  raw_regex: "[Uu]nknown [Rr]esource [Tt]ype:?\\s*'?(?P<ResourceType>AWS::[A-Za-z0-9:]+)'?"
+title: "Template references an unknown resource type"
+cause: "CloudFormation does not know about the resource type {{ .ResourceType }}. The most common causes are a typo in Type (e.g. AWS::ElasticLoadBalancingV2::LoadBalanc instead of LoadBalancer), an unsupported region for that resource, or a third-party CFN registry type that has not been activated in this account."
+suggested:
+  - "Open the template and confirm the spelling of Type for the failing resource."
+  - "Check the AWS CloudFormation resource reference for {{ .ResourceType }} and confirm the service is available in {{ .Region }}."
+  - "If this is a third-party type, activate it first: aws cloudformation activate-type --type-name {{ .ResourceType }}."
+console_url: "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-template-resource-type-ref.html"
+retryable: true

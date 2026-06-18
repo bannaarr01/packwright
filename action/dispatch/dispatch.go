@@ -40,6 +40,13 @@ type awsClientKey struct{}
 // surfaceKey is the private context-key type used by WithSurface.
 type surfaceKey struct{}
 
+// validatorsDisabledKey is the private context-key type used by
+// WithValidatorsDisabled. The flag is session-scoped (ADR-0050) so it
+// rides the context rather than a package-level var; that way a /tui
+// invocation and a /gui invocation from the same process can hold
+// independent values if PR-06's update flow ever spawns nested dispatches.
+type validatorsDisabledKey struct{}
+
 // WithAWSClient binds an awsx.Client to ctx so kind-specific runners that
 // need AWS credentials (resource today, others later) can retrieve it
 // without threading the client through Dispatch's signature.
@@ -53,6 +60,22 @@ func WithAWSClient(ctx context.Context, c *awsx.Client) context.Context {
 func awsClientFromContext(ctx context.Context) *awsx.Client {
 	c, _ := ctx.Value(awsClientKey{}).(*awsx.Client)
 	return c
+}
+
+// WithValidatorsDisabled tags ctx with the user's --no-validate choice.
+// The kind-specific runner reads it back via validatorsDisabledFromContext
+// and threads the value into resource.WithValidators(false) so the engine
+// skips the template-validator pipeline (ADR-0050). The flag is
+// session-scoped — Packwright never writes it to config.yaml.
+func WithValidatorsDisabled(ctx context.Context, disabled bool) context.Context {
+	return context.WithValue(ctx, validatorsDisabledKey{}, disabled)
+}
+
+// validatorsDisabledFromContext reads the --no-validate flag back from ctx,
+// defaulting to false (validators enabled) when no value was bound.
+func validatorsDisabledFromContext(ctx context.Context) bool {
+	v, _ := ctx.Value(validatorsDisabledKey{}).(bool)
+	return v
 }
 
 // WithSurface tags ctx with the front-end that originated the dispatch

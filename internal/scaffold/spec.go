@@ -43,6 +43,13 @@ type Spec struct {
 	// Deploy populates the top-level `deploy:` section. Required when
 	// Kind == KindResource; must be nil for every other kind.
 	Deploy *DeploySpec
+
+	// Ready selects between "scaffold a draft" (the default; ADR-0047's
+	// draft-by-default contract) and "scaffold a deployable manifest"
+	// (set true by the wizard's --ready flag). When false, Generate
+	// emits a `_draft: true` header in the rendered YAML; when true,
+	// the header is omitted and the manifest is immediately deployable.
+	Ready bool
 }
 
 // FieldSpec mirrors manifest.Field one-for-one but uses a string Default so
