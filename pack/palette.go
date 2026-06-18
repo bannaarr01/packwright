@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/bannaarr01/packwright/internal/scaffold"
+	"github.com/bannaarr01/packwright/manifest"
 )
 
 // PaletteEntry is one row in the command-palette UI. Both surfaces (TUI and
@@ -136,6 +137,41 @@ func LoadPalette(homeDir string, defaults map[string]string) ([]PaletteEntry, er
 	}
 
 	return out, errors.Join(errs...)
+}
+
+// ResolveRunnable maps a palette slash to the manifest that runs for the bare
+// invocation, plus the base directory its relative template / script paths
+// resolve against (filepath.Dir of the manifest source; empty for the built-in
+// wizards, which write to a form-supplied directory). It mirrors LoadPalette's
+// data sources — user scope, then discovered packs, then the /new-command and
+// /new-pack wizards — and applies the same pinned-default ordering, so the
+// manifest returned here is the row the palette displayed. A slash with no
+// backing manifest returns ok=false. Both front-ends call this so the TUI
+// palette and the GUI palette route a pick to the same manifest.
+func ResolveRunnable(homeDir string, pinned map[string]string, slash string) (*manifest.Manifest, string, bool) {
+	user, _ := LoadUserScope(homeDir)
+	packs, _ := Discover(homeDir)
+	all := make([]*Pack, 0, len(packs)+1)
+	if user != nil {
+		all = append(all, user)
+	}
+	all = append(all, packs...)
+
+	if res := Resolve(all, Qualified{Slash: slash}, pinned[slash]); len(res) > 0 && res[0].Manifest != nil {
+		m := res[0].Manifest
+		baseDir := ""
+		if m.Source != "" {
+			baseDir = filepath.Dir(m.Source)
+		}
+		return m, baseDir, true
+	}
+
+	for _, m := range scaffold.WizardManifests() {
+		if m != nil && m.Slash == slash {
+			return m, "", true
+		}
+	}
+	return nil, "", false
 }
 
 // WatchRoots returns the directories the manifest watcher should subscribe

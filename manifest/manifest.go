@@ -52,6 +52,12 @@ type Manifest struct {
 	Deploy        *DeploySpec   `yaml:"deploy,omitempty"`
 	Form          []Field       `yaml:"form,omitempty"`
 	Scaling       []ScalingSpec `yaml:"scaling,omitempty"`
+
+	// Source is the path of the file this manifest was loaded from, set by
+	// Load. It is not part of the on-disk schema (yaml:"-"); front-ends use
+	// filepath.Dir(Source) as the base directory for the manifest's relative
+	// template / script paths (see resource.WithBaseDir / dispatch.WithBaseDir).
+	Source string `yaml:"-"`
 }
 
 // TemplateSpec describes where the underlying infrastructure template lives

@@ -75,13 +75,14 @@ func TestAppClosePaletteMessageRestoresFocus(t *testing.T) {
 }
 
 // TestAppUnknownPaletteSelectionClosesOverlay verifies that a palette
-// selection whose slash isn't routed by the shell (e.g. /new-pack)
-// still closes the overlay so the user can keep navigating.
+// selection whose slash resolves to no manifest (not a pack command, not a
+// built-in wizard) still closes the overlay so the user can keep navigating
+// and pushes nothing.
 func TestAppUnknownPaletteSelectionClosesOverlay(t *testing.T) {
 	a := newApp(nil, nil)
 	model, _ := a.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
 	a = model.(app)
-	model, _ = a.Update(paletteSelectedMsg{Slash: "/new-pack", Title: "new pack"})
+	model, _ = a.Update(paletteSelectedMsg{Slash: "/no-such-command-xyz", Title: "nope"})
 	a = model.(app)
 	if a.focus == focusPalette {
 		t.Errorf("focus is still palette after selection; want sidebar/content")

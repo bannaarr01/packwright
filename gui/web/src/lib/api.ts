@@ -21,6 +21,33 @@ export interface SlashCommand {
   pinned: boolean;
 }
 
+// FormField mirrors gui/bindings_run.go:FormField — one input the run panel
+// renders before dispatching a manifest command.
+export interface FormField {
+  id: string;
+  label: string;
+  type: string;
+  placeholder: string;
+  required: boolean;
+}
+
+// FormPayload mirrors gui/bindings_run.go:FormPayload. resolved is false when
+// the slash has no backing manifest, so the run panel declines to open.
+export interface FormPayload {
+  slash: string;
+  title: string;
+  resolved: boolean;
+  fields: FormField[];
+}
+
+// RunResult mirrors gui/bindings_run.go:RunResult — the collected engine
+// output plus the run outcome.
+export interface RunResult {
+  ok: boolean;
+  output: string[];
+  error: string;
+}
+
 export interface ThemeTokens {
   bg: string;
   fg: string;
@@ -87,6 +114,8 @@ export interface WailsBindings {
   ListSlashCommands(): Promise<SlashCommand[]>;
   Theme(): Promise<ThemePayload>;
   SelectSlashCommand(sc: SlashCommand): Promise<void>;
+  SlashCommandForm(slash: string): Promise<FormPayload>;
+  RunSlashCommand(slash: string, inputs: Record<string, string>): Promise<RunResult>;
   ListProjects(): Promise<Project[]>;
   ListStacks(project: string, env: string): Promise<StackRow[]>;
 }
@@ -112,6 +141,9 @@ export const api = {
   listSlashCommands: () => bindings().ListSlashCommands(),
   theme: () => bindings().Theme(),
   selectSlashCommand: (sc: SlashCommand) => bindings().SelectSlashCommand(sc),
+  slashCommandForm: (slash: string) => bindings().SlashCommandForm(slash),
+  runSlashCommand: (slash: string, inputs: Record<string, string>) =>
+    bindings().RunSlashCommand(slash, inputs),
   listProjects: () => bindings().ListProjects(),
   listStacks: (project: string, env: string) => bindings().ListStacks(project, env),
 };
