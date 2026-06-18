@@ -41,8 +41,18 @@ func (resourceRunner) Validate(m *manifest.Manifest) error {
 // Run pulls the awsx.Client from ctx (see WithAWSClient) and delegates to
 // resource.Execute. On success the *resource.Result is returned in
 // Result.Value so callers can drain Events and Wait on the deploy.
+//
+// The --no-validate flag, when set on ctx via WithValidatorsDisabled, is
+// translated to resource.WithValidators(false) so the engine skips the
+// template-validator pipeline (ADR-0050). The flag never reaches the engine
+// by any other path, which keeps the "validators on by default" invariant
+// honest for every dispatch call site.
 func (resourceRunner) Run(ctx context.Context, m *manifest.Manifest, in action.Inputs) (action.Result, error) {
-	res, err := resource.Execute(ctx, m, resource.Inputs(in), awsClientFromContext(ctx))
+	var opts []resource.Option
+	if validatorsDisabledFromContext(ctx) {
+		opts = append(opts, resource.WithValidators(false))
+	}
+	res, err := resource.Execute(ctx, m, resource.Inputs(in), awsClientFromContext(ctx), opts...)
 	if err != nil {
 		return action.Result{Kind: manifest.KindResource}, err
 	}

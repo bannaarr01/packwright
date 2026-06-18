@@ -1,0 +1,14 @@
+id: validate-template-format-error
+priority: 50
+match:
+  aws_service: CloudFormation
+  aws_code: ValidationError
+  raw_regex: "[Tt]emplate format error:\\s*(?P<Detail>.+)"
+title: "Template format error"
+cause: "CloudFormation could not parse the template: {{ .Detail }}. The most common causes are an unexpected YAML/JSON token, a missing required top-level key (Resources, AWSTemplateFormatVersion), or a malformed intrinsic function call."
+suggested:
+  - "Open the template at the offending line and verify the surrounding YAML/JSON is well-formed."
+  - "Re-run with --no-validate only if you are deliberately using Transforms or macros that ValidateTemplate does not understand."
+  - "Lint the template locally first: yamllint <template> (catches indentation and quoting mistakes)."
+console_url: "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/template-anatomy.html"
+retryable: true

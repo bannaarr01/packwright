@@ -38,6 +38,8 @@ Run without arguments to launch the interactive terminal UI (TUI), or pass
 	cmd.Flags().BoolVar(&guiMode, "gui", false,
 		"launch the graphical (GUI) front-end instead of the terminal (TUI) front-end")
 
+	applyValidatorFlags(cmd)
+
 	for _, sub := range rootSubcommands {
 		cmd.AddCommand(sub)
 	}
