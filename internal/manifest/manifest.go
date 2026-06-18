@@ -88,6 +88,7 @@ type Manifest struct {
 	Template      *TemplateSpec `yaml:"template,omitempty"`
 	Deploy        *DeploySpec   `yaml:"deploy,omitempty"`
 	Form          []Field       `yaml:"form,omitempty"`
+	Scaling       []ScalingSpec `yaml:"scaling,omitempty"`
 
 	Draft      bool   `yaml:"_draft,omitempty"`
 	CopiedFrom string `yaml:"_copied_from,omitempty"`
@@ -147,6 +148,40 @@ type ValidatorSpec struct {
 	Rule    string         `yaml:"rule"`
 	Message string         `yaml:"message,omitempty"`
 	Params  map[string]any `yaml:",inline"`
+}
+
+// ScalingSpec declares one parameter the /scale slash command can mutate
+// against a deployed stack (ADR-0049). Param must resolve to a form[].id
+// in the same manifest — Validate enforces that linkage at load time. The
+// kind/min/max/step/values fields override the form field's metadata only
+// for the scaling UI; the form itself keeps its own widget. EnvGuards
+// overlays per-environment min/max and an optional require_confirmation
+// flag that wires into the ADR-0036 consent modal.
+//
+// The runtime form of this type lives in internal/scaling — cmd_scale.go
+// converts the manifest's []ScalingSpec into []scaling.Spec before calling
+// BuildParams. Keeping the YAML representation here keeps internal/scaling
+// free of any decoder dependency.
+type ScalingSpec struct {
+	Param     string                     `yaml:"param"`
+	Label     string                     `yaml:"label,omitempty"`
+	Kind      string                     `yaml:"kind"`
+	Min       *int                       `yaml:"min,omitempty"`
+	Max       *int                       `yaml:"max,omitempty"`
+	Step      *int                       `yaml:"step,omitempty"`
+	Values    []string                   `yaml:"values,omitempty"`
+	EnvGuards map[string]ScalingEnvGuard `yaml:"env_guards,omitempty"`
+}
+
+// ScalingEnvGuard is one per-environment overlay on a ScalingSpec. The Min
+// and Max overrides win over the spec's own bounds when non-nil
+// (intentionally — per ADR-0049 the env guard is the tighter authority).
+// RequireConfirmation flags this env as one whose /scale invocations must
+// surface the ADR-0036 consent modal before ExecuteChangeSet runs.
+type ScalingEnvGuard struct {
+	Min                 *int `yaml:"min,omitempty"`
+	Max                 *int `yaml:"max,omitempty"`
+	RequireConfirmation bool `yaml:"require_confirmation,omitempty"`
 }
 
 // CanRun reports whether MVP-1 supports this manifest's kind at runtime. It

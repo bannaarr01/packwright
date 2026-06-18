@@ -99,6 +99,9 @@ func Validate(m *Manifest) error {
 	if err := validateFields(m.Form); err != nil {
 		return err
 	}
+	if err := validateScaling(m.Scaling, m.Form); err != nil {
+		return err
+	}
 
 	// Draft check runs last so the error reports a slash that already
 	// passed structural validation; if a draft is structurally broken,
@@ -106,6 +109,33 @@ func Validate(m *Manifest) error {
 	// and the draft-not-promoted error second on the next attempt.
 	if IsDraft(m) {
 		return &ErrDraftNotPromoted{Slash: m.Slash}
+	}
+	return nil
+}
+
+// validateScaling enforces the single rule the scaling block carries on its
+// own behalf (ADR-0049): every scaling[].param must resolve to a form[].id.
+// The kind/min/max/step/values fields are not checked here — they overlay
+// the form's metadata for the /scale UI only, and the scaling package
+// validates them at BuildParams time. The form-field set is the source of
+// truth for what parameters can be touched at all.
+func validateScaling(specs []ScalingSpec, fields []Field) error {
+	if len(specs) == 0 {
+		return nil
+	}
+	formIDs := make(map[string]struct{}, len(fields))
+	for _, f := range fields {
+		formIDs[f.ID] = struct{}{}
+	}
+	for i, s := range specs {
+		path := fmt.Sprintf("scaling[%d].param", i)
+		if s.Param == "" {
+			return invalid(path, "is required")
+		}
+		if _, ok := formIDs[s.Param]; !ok {
+			return invalid(path,
+				fmt.Sprintf("references unknown form field %q", s.Param))
+		}
 	}
 	return nil
 }
