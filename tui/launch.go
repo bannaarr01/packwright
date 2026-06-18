@@ -13,6 +13,7 @@ import (
 	"github.com/bannaarr01/packwright/internal/ai/consent"
 	"github.com/bannaarr01/packwright/internal/manifest"
 	"github.com/bannaarr01/packwright/internal/record"
+	"github.com/bannaarr01/packwright/internal/update"
 	"github.com/bannaarr01/packwright/pack"
 )
 
@@ -65,6 +66,12 @@ func Launch(ctx context.Context) error {
 	restoreModal := installConsentBridge(p)
 	defer restoreModal()
 
+	// Bridge the update coordinator's replacement-consent gate (ADR-0036) into
+	// the loop the same way: update.Stack calls it from the off-UI dispatch
+	// goroutine, and the update screen renders the modal and replies.
+	restoreReplace := installReplacementConsentBridge(p)
+	defer restoreReplace()
+
 	stopWatcher := startManifestWatcher(ctx, logger, p)
 	defer stopWatcher()
 
@@ -86,6 +93,25 @@ func installConsentBridge(p *tea.Program) func() {
 		return <-reply
 	}
 	return func() { consent.ShowModal = prev }
+}
+
+// installReplacementConsentBridge points the package-level replacementConsentFn
+// at the running program so the update screen can render the ADR-0036
+// replacement modal and return the user's decision to the blocked coordinator
+// goroutine. It returns a function that restores the previous (deny-all) gate.
+func installReplacementConsentBridge(p *tea.Program) func() {
+	prev := replacementConsentFn
+	replacementConsentFn = func(ctx context.Context, payload update.ReplacementPayload) update.ConsentDecision {
+		reply := make(chan update.ConsentDecision, 1)
+		p.Send(replacementConsentMsg{payload: payload, reply: reply})
+		select {
+		case d := <-reply:
+			return d
+		case <-ctx.Done():
+			return update.ConsentDeny
+		}
+	}
+	return func() { replacementConsentFn = prev }
 }
 
 // buildPaletteLoader returns the closure the root model calls on every

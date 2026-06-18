@@ -52,6 +52,14 @@ func (resourceRunner) Run(ctx context.Context, m *manifest.Manifest, in action.I
 	if validatorsDisabledFromContext(ctx) {
 		opts = append(opts, resource.WithValidators(false))
 	}
+	// Resolve the manifest's relative template / script / parameters paths
+	// against the directory the front-end recorded (filepath.Dir of the
+	// manifest source). Without this the engine's default base dir (".") only
+	// works when the process CWD already sits in the manifest directory — the
+	// reason a palette-launched deploy previously could not find its template.
+	if dir := baseDirFromContext(ctx); dir != "" {
+		opts = append(opts, resource.WithBaseDir(dir))
+	}
 	res, err := resource.Execute(ctx, m, resource.Inputs(in), awsClientFromContext(ctx), opts...)
 	if err != nil {
 		return action.Result{Kind: manifest.KindResource}, err

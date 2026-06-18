@@ -3,11 +3,14 @@
   import { api, type SlashCommand, type ThemePayload } from './lib/api';
   import Launcher from './lib/launcher/Launcher.svelte';
   import Palette from './lib/palette/Palette.svelte';
+  import RunPanel from './lib/run/RunPanel.svelte';
   import Sidebar from './lib/sidebar/Sidebar.svelte';
 
   // Root component. Owns palette state, theme, AWS context, and sidebar
   // collapsed-ness. Sub components read those via props (one-way flow).
   let paletteOpen = $state(false);
+  // running holds the command the user picked; non-null opens the run panel.
+  let running = $state<SlashCommand | null>(null);
   let theme = $state<ThemePayload | null>(null);
   let profile = $state('-');
   let region = $state('-');
@@ -49,10 +52,12 @@
     }
   }
 
+  // runSlash opens the run panel for the picked command. The panel fetches the
+  // command's form, collects inputs, and dispatches it through the engine
+  // (RunSlashCommand) — replacing the old log-only SelectSlashCommand stub.
   function runSlash(sc: SlashCommand) {
-    api.selectSlashCommand(sc).catch((err) => {
-      console.error('Packwright GUI: SelectSlashCommand failed', err);
-    });
+    paletteOpen = false;
+    running = sc;
   }
 
   // Svelte 5's onMount accepts either an async callback OR a sync callback
@@ -127,7 +132,10 @@
     >
       <Launcher />
       {#if paletteOpen}
-        <Palette onClose={() => (paletteOpen = false)} />
+        <Palette onClose={() => (paletteOpen = false)} onPick={runSlash} />
+      {/if}
+      {#if running}
+        <RunPanel slash={running.slash} title={running.title} onClose={() => (running = null)} />
       {/if}
     </section>
   </main>

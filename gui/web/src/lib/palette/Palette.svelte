@@ -16,9 +16,10 @@
 
   interface Props {
     onClose: () => void;
+    onPick: (sc: SlashCommand) => void;
   }
 
-  const { onClose }: Props = $props();
+  const { onClose, onPick }: Props = $props();
 
   let query = $state('');
   let items = $state<SlashCommand[]>([]);
@@ -109,10 +110,7 @@
       e.preventDefault();
       const pick = filtered[activeIndex];
       if (pick) {
-        api.selectSlashCommand(pick).catch((err) => {
-          console.error('Packwright GUI: SelectSlashCommand failed', err);
-        });
-        onClose();
+        onPick(pick);
       }
       return;
     }
@@ -165,12 +163,7 @@
           class:text-light-selection_fg={i === activeIndex}
           class:dark:text-dark-selection_fg={i === activeIndex}
           onmouseenter={() => (activeIndex = i)}
-          onclick={() => {
-            api.selectSlashCommand(item).catch((err) => {
-              console.error('Packwright GUI: SelectSlashCommand failed', err);
-            });
-            onClose();
-          }}
+          onclick={() => onPick(item)}
         >
           <span class="font-mono text-sm">{item.slash}</span>
           <span class="opacity-70 text-sm">{item.title}</span>

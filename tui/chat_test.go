@@ -40,12 +40,12 @@ func TestApp_AISlashPushesChatScreen_Disabled(t *testing.T) {
 	}
 }
 
-// TestApp_NonAISlashLeavesRegistryAtHome verifies that an unrouted
-// palette selection (e.g. /new-pack) just closes the overlay — the
-// registry doesn't grow.
+// TestApp_NonAISlashLeavesRegistryAtHome verifies that a palette selection
+// resolving to no manifest at all (not a pack command, not a built-in wizard)
+// just closes the overlay — the registry doesn't grow.
 func TestApp_NonAISlashLeavesRegistryAtHome(t *testing.T) {
 	a := newApp(nil, nil)
-	m, _ := a.Update(paletteSelectedMsg{Slash: "/new-pack", Title: "New pack"})
+	m, _ := a.Update(paletteSelectedMsg{Slash: "/no-such-command-xyz", Title: "nope"})
 	na := m.(app)
 	if d := na.registry.Depth(); d != 1 {
 		t.Fatalf("registry depth = %d, want 1 (no screen pushed)", d)

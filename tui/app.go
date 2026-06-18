@@ -14,6 +14,7 @@ import (
 	"github.com/bannaarr01/packwright/internal/ai/consent"
 	"github.com/bannaarr01/packwright/internal/audit"
 	"github.com/bannaarr01/packwright/internal/record"
+	"github.com/bannaarr01/packwright/internal/update"
 	"github.com/bannaarr01/packwright/internal/workspace"
 	"github.com/bannaarr01/packwright/tui/footer"
 	"github.com/bannaarr01/packwright/tui/header"
@@ -63,6 +64,9 @@ type app struct {
 	cfg   *config.Config
 	home  string
 	store *record.Store
+	// pendingRun holds the manifest picked from the palette while its input
+	// form is on screen; handleFormSubmit consumes it to launch the run.
+	pendingRun *pendingRun
 }
 
 // newApp constructs the root model. logger receives palette-selection
@@ -152,6 +156,12 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case paletteSelectedMsg:
 		return a.handlePaletteSelection(m)
 
+	case screens.FormSubmitMsg:
+		return a.handleFormSubmit(m)
+
+	case screens.RecordActionMsg:
+		return a.handleRecordAction(m)
+
 	case consentRequestMsg:
 		// A write-consent request must always be answered so the
 		// engine's blocked tool goroutine never leaks: route to the
@@ -161,6 +171,17 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		}
 		m.reply <- consent.Deny
+		return a, nil
+
+	case replacementConsentMsg:
+		// Route the update coordinator's replacement-consent request to the
+		// update screen when it's on top; otherwise deny (fail-closed) so the
+		// blocked coordinator goroutine never leaks.
+		if _, ok := a.registry.Top().(*updateScreen); ok {
+			cmd := a.registry.UpdateTop(msg)
+			return a, cmd
+		}
+		m.reply <- update.ConsentDeny
 		return a, nil
 
 	case ProfileSwitcherMsg:
@@ -301,8 +322,14 @@ func (a app) handlePaletteSelection(m paletteSelectedMsg) (tea.Model, tea.Cmd) {
 		a.tree.Focus(false)
 		a.applyContentSize()
 		return a, cmd
+
+	default:
+		// Any other slash is a manifest-backed command (the reference /alb
+		// deploy, a pack action, a user-scope command): resolve it and run it
+		// through the action engine. This is the path that turned the palette
+		// from a "log the selection" stub into a working launcher.
+		return a.startManifestRun(m.Slash)
 	}
-	return a, nil
 }
 
 // openPalette parks focus on the overlay and records the previous focus

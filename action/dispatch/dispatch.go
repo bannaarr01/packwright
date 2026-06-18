@@ -40,6 +40,9 @@ type awsClientKey struct{}
 // surfaceKey is the private context-key type used by WithSurface.
 type surfaceKey struct{}
 
+// baseDirKey is the private context-key type used by WithBaseDir.
+type baseDirKey struct{}
+
 // validatorsDisabledKey is the private context-key type used by
 // WithValidatorsDisabled. The flag is session-scoped (ADR-0050) so it
 // rides the context rather than a package-level var; that way a /tui
@@ -60,6 +63,23 @@ func WithAWSClient(ctx context.Context, c *awsx.Client) context.Context {
 func awsClientFromContext(ctx context.Context) *awsx.Client {
 	c, _ := ctx.Value(awsClientKey{}).(*awsx.Client)
 	return c
+}
+
+// WithBaseDir binds the directory that the kind-specific runner should treat
+// as the root for the manifest's relative paths (template, parameters file,
+// deploy script). The resource runner threads it into resource.WithBaseDir.
+// Front-ends set it to filepath.Dir(manifest.Source); when unset the runner
+// falls back to the engine default ("."), which only resolves correctly when
+// the process CWD already sits in the manifest's directory.
+func WithBaseDir(ctx context.Context, dir string) context.Context {
+	return context.WithValue(ctx, baseDirKey{}, dir)
+}
+
+// baseDirFromContext returns the base directory bound with WithBaseDir, or ""
+// when none was set. Kept unexported because only in-package adapters read it.
+func baseDirFromContext(ctx context.Context) string {
+	dir, _ := ctx.Value(baseDirKey{}).(string)
+	return dir
 }
 
 // WithValidatorsDisabled tags ctx with the user's --no-validate choice.

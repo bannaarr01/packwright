@@ -48,12 +48,23 @@ type formKeyMap struct {
 // NewForm builds a form with the given title and fields. The first
 // field is focused automatically.
 func NewForm(title string, fields []manifest.Field) *FormScreen {
+	return NewFormWithValues(title, fields, nil)
+}
+
+// NewFormWithValues is NewForm with each input pre-seeded from initial
+// (keyed by field ID). It is used by the /scale flow to show the stack's
+// current parameter values so the user edits rather than re-enters them.
+// Fields absent from initial start empty (showing their placeholder hint).
+func NewFormWithValues(title string, fields []manifest.Field, initial map[string]string) *FormScreen {
 	inputs := make([]textinput.Model, len(fields))
 	for i, f := range fields {
 		ti := textinput.New()
 		ti.Placeholder = f.Placeholder
 		ti.Prompt = "› "
 		ti.CharLimit = 200
+		if v, ok := initial[f.ID]; ok {
+			ti.SetValue(v)
+		}
 		inputs[i] = ti
 	}
 	if len(inputs) > 0 {
