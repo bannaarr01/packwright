@@ -2,14 +2,21 @@ package resource_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
+	cfntypes "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
+
 	"github.com/bannaarr01/packwright/action/resource"
 	"github.com/bannaarr01/packwright/awsx"
+	"github.com/bannaarr01/packwright/internal/record"
 	"github.com/bannaarr01/packwright/manifest"
 )
 
@@ -281,4 +288,242 @@ func containsLine(lines []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// fakeCFNForRuntime is a minimal cloudFormationAPI that lets the runtime
+// integration test exercise resource.WithRecordHook end-to-end without
+// touching AWS. The fake is package-local to runtime_test so internal/record
+// can stay free of resource-runtime adapters.
+type fakeCFNForRuntime struct {
+	stacks    []cfntypes.Stack
+	resources []cfntypes.StackResource
+}
+
+func (f *fakeCFNForRuntime) DescribeStacks(_ context.Context, _ *cloudformation.DescribeStacksInput, _ ...func(*cloudformation.Options)) (*cloudformation.DescribeStacksOutput, error) {
+	return &cloudformation.DescribeStacksOutput{Stacks: f.stacks}, nil
+}
+
+func (f *fakeCFNForRuntime) DescribeStackResources(_ context.Context, _ *cloudformation.DescribeStackResourcesInput, _ ...func(*cloudformation.Options)) (*cloudformation.DescribeStackResourcesOutput, error) {
+	return &cloudformation.DescribeStackResourcesOutput{StackResources: f.resources}, nil
+}
+
+// albRecordInputs constructs an input set that resolves STACK_NAME to
+// "alb-dev-stack" — the canonical fixture path the PR-02 acceptance test
+// asserts the file appears at.
+func albRecordInputs() resource.Inputs {
+	in := canonicalInputs()
+	in["Project"] = "acme"
+	in["Environment"] = "dev"
+	return in
+}
+
+// albRecordManifest tweaks the canonical ALB manifest so the templated
+// STACK_NAME matches the ADR-0046 worked example (`alb-dev-stack`).
+func albRecordManifest(t *testing.T, dir string) *manifest.Manifest {
+	t.Helper()
+	m := albManifest(t, dir)
+	m.Deploy.Env["STACK_NAME"] = "alb-{{.Environment}}-stack"
+	return m
+}
+
+// TestExecute_WritesStackRecordOnSuccessfulDeploy is the PR-02 acceptance test:
+// run a real deploy script against a fake CFN client and assert that the file
+// lands at the documented path with the documented shape.
+func TestExecute_WritesStackRecordOnSuccessfulDeploy(t *testing.T) {
+	dir := t.TempDir()
+	copyFile(t, "testdata/fake-deploy.sh", filepath.Join(dir, "fake-deploy.sh"), 0o755)
+
+	stackName := "alb-dev-stack"
+	now := time.Date(2026, 6, 18, 10, 0, 0, 0, time.UTC)
+	cfn := &fakeCFNForRuntime{
+		stacks: []cfntypes.Stack{{
+			StackName:    aws.String(stackName),
+			StackStatus:  cfntypes.StackStatusCreateComplete,
+			CreationTime: aws.Time(now),
+			Outputs: []cfntypes.Output{
+				{OutputKey: aws.String("LoadBalancerDNSName"), OutputValue: aws.String("alb-dev.example")},
+			},
+			Parameters: []cfntypes.Parameter{
+				{ParameterKey: aws.String("VpcId"), ParameterValue: aws.String("vpc-0abc1234")},
+			},
+		}},
+		resources: []cfntypes.StackResource{{
+			LogicalResourceId:  aws.String("ApplicationLoadBalancer"),
+			PhysicalResourceId: aws.String("arn:aws:elasticloadbalancing:eu-west-1:123:lb"),
+			ResourceType:       aws.String("AWS::ElasticLoadBalancingV2::LoadBalancer"),
+			ResourceStatus:     cfntypes.ResourceStatusCreateComplete,
+		}},
+	}
+
+	store := record.NewStore(dir)
+	rec := &record.Recorder{
+		CFN:   cfn,
+		Store: store,
+		Identity: record.Identity{
+			Project: "acme", Env: "dev",
+			Profile: "acme-dev", Region: "eu-west-1",
+			Account:  "123456789012",
+			Manifest: record.ManifestRef{Slash: "/alb", Source: "packs/reference/manifests/alb.yaml"},
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	res, err := resource.Execute(
+		ctx,
+		albRecordManifest(t, dir),
+		albRecordInputs(),
+		awsx.NewForTest("acme-dev", "eu-west-1"),
+		resource.WithBaseDir(dir),
+		resource.WithAZLookup(fakeAZLookup()),
+		resource.WithRecordHook(rec.Hook()),
+	)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	for range res.Events {
+		// drain
+	}
+	if err := res.Wait(); err != nil {
+		t.Fatalf("Wait: %v", err)
+	}
+
+	wantPath := filepath.Join(dir, "projects", "acme", "dev", "stacks", "alb-dev-stack.json")
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("expected record at %s: %v", wantPath, err)
+	}
+
+	got, err := store.Read("acme", "dev", "alb-dev-stack")
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if got.Status.Broad != record.BroadDeployed {
+		t.Errorf("Status.Broad = %q, want %q", got.Status.Broad, record.BroadDeployed)
+	}
+	if len(got.History) != 1 {
+		t.Errorf("history len = %d, want 1", len(got.History))
+	}
+	if got.Manifest.Slash != "/alb" {
+		t.Errorf("manifest.slash = %q, want /alb", got.Manifest.Slash)
+	}
+}
+
+// TestExecute_RecordHook_RedeployAppendsHistory is the second half of the
+// PR-02 acceptance: re-running the deploy appends a single history entry
+// without duplicating the outputs / resources / parameters.
+func TestExecute_RecordHook_RedeployAppendsHistory(t *testing.T) {
+	dir := t.TempDir()
+	copyFile(t, "testdata/fake-deploy.sh", filepath.Join(dir, "fake-deploy.sh"), 0o755)
+
+	stackName := "alb-dev-stack"
+	cfn := &fakeCFNForRuntime{
+		stacks: []cfntypes.Stack{{
+			StackName:    aws.String(stackName),
+			StackStatus:  cfntypes.StackStatusCreateComplete,
+			CreationTime: aws.Time(time.Date(2026, 6, 18, 10, 0, 0, 0, time.UTC)),
+			Outputs: []cfntypes.Output{
+				{OutputKey: aws.String("DNSName"), OutputValue: aws.String("alb-dev.example")},
+			},
+			Parameters: []cfntypes.Parameter{
+				{ParameterKey: aws.String("VpcId"), ParameterValue: aws.String("vpc-0abc1234")},
+			},
+		}},
+		resources: []cfntypes.StackResource{{
+			LogicalResourceId:  aws.String("ALB"),
+			PhysicalResourceId: aws.String("arn:lb"),
+			ResourceType:       aws.String("AWS::ElasticLoadBalancingV2::LoadBalancer"),
+			ResourceStatus:     cfntypes.ResourceStatusCreateComplete,
+		}},
+	}
+	store := record.NewStore(dir)
+	rec := &record.Recorder{
+		CFN:   cfn,
+		Store: store,
+		Identity: record.Identity{
+			Project: "acme", Env: "dev",
+			Profile: "acme-dev", Region: "eu-west-1",
+			Account:  "123456789012",
+			Manifest: record.ManifestRef{Slash: "/alb", Source: "packs/reference/manifests/alb.yaml"},
+		},
+	}
+
+	deployOnce := func(t *testing.T) {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		res, err := resource.Execute(
+			ctx,
+			albRecordManifest(t, dir),
+			albRecordInputs(),
+			awsx.NewForTest("acme-dev", "eu-west-1"),
+			resource.WithBaseDir(dir),
+			resource.WithAZLookup(fakeAZLookup()),
+			resource.WithRecordHook(rec.Hook()),
+		)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		for range res.Events {
+		}
+		if err := res.Wait(); err != nil {
+			t.Fatalf("Wait: %v", err)
+		}
+	}
+
+	deployOnce(t)
+	deployOnce(t)
+
+	got, err := store.Read("acme", "dev", stackName)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if len(got.History) != 2 {
+		t.Errorf("history len = %d, want 2 (one append per redeploy)", len(got.History))
+	}
+	if len(got.Outputs) != 1 || len(got.Resources) != 1 || len(got.Parameters) != 1 {
+		t.Errorf("merged fields duplicated on redeploy: outputs=%d resources=%d params=%d",
+			len(got.Outputs), len(got.Resources), len(got.Parameters))
+	}
+}
+
+// TestExecute_RecordHook_ErrorDoesNotFailDeploy asserts that a harvest miss
+// is best-effort: the engine still returns the deploy script's exit status
+// and never propagates the hook's error.
+func TestExecute_RecordHook_ErrorDoesNotFailDeploy(t *testing.T) {
+	dir := t.TempDir()
+	copyFile(t, "testdata/fake-deploy.sh", filepath.Join(dir, "fake-deploy.sh"), 0o755)
+
+	var hookCalled atomic.Int32
+	failingHook := func(_ context.Context, _ string, _ error) {
+		hookCalled.Add(1)
+		// Intentionally return without writing — the hook contract is
+		// fire-and-forget. A panic here would still be the engine's
+		// problem; recovery is the hook's responsibility (the real
+		// implementation uses a logged error path).
+		_ = errors.New("harvest exploded — engine must continue regardless")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	res, err := resource.Execute(
+		ctx,
+		albRecordManifest(t, dir),
+		albRecordInputs(),
+		awsx.NewForTest("acme-dev", "eu-west-1"),
+		resource.WithBaseDir(dir),
+		resource.WithAZLookup(fakeAZLookup()),
+		resource.WithRecordHook(failingHook),
+	)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	for range res.Events {
+	}
+	if err := res.Wait(); err != nil {
+		t.Fatalf("Wait returned %v; the deploy must succeed even when the record hook fails", err)
+	}
+	if hookCalled.Load() == 0 {
+		t.Errorf("record hook was not invoked")
+	}
 }
