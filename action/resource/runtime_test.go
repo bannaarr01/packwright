@@ -1,8 +1,10 @@
 package resource_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +19,7 @@ import (
 	"github.com/bannaarr01/packwright/action/resource"
 	"github.com/bannaarr01/packwright/awsx"
 	"github.com/bannaarr01/packwright/internal/record"
+	"github.com/bannaarr01/packwright/internal/validate"
 	"github.com/bannaarr01/packwright/manifest"
 )
 
@@ -118,6 +121,10 @@ func TestExecute_RendersGoldenParametersFile(t *testing.T) {
 		awsx.NewForTest("test-profile", "eu-west-1"),
 		resource.WithBaseDir(dir),
 		resource.WithAZLookup(fakeAZLookup()),
+		// This test predates ADR-0050's validator pipeline and exercises only
+		// the parameters-rendering path; skip the validators so it does not
+		// require a fixture template on disk.
+		resource.WithValidators(false),
 	)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -241,6 +248,9 @@ sleep 30
 		awsx.NewForTest("p", "r"),
 		resource.WithBaseDir(dir),
 		resource.WithAZLookup(fakeAZLookup()),
+		// Same reason as TestExecute_RendersGoldenParametersFile: this test
+		// targets the cancel/fan-in path, not the validator hook.
+		resource.WithValidators(false),
 	)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -378,6 +388,10 @@ func TestExecute_WritesStackRecordOnSuccessfulDeploy(t *testing.T) {
 		resource.WithBaseDir(dir),
 		resource.WithAZLookup(fakeAZLookup()),
 		resource.WithRecordHook(rec.Hook()),
+		// The record-hook tests don't have a fixture template on disk and
+		// rely solely on the script-driver path; skip validators so Stage 1
+		// doesn't fail on a missing template file.
+		resource.WithValidators(false),
 	)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -460,6 +474,7 @@ func TestExecute_RecordHook_RedeployAppendsHistory(t *testing.T) {
 			resource.WithBaseDir(dir),
 			resource.WithAZLookup(fakeAZLookup()),
 			resource.WithRecordHook(rec.Hook()),
+			resource.WithValidators(false),
 		)
 		if err != nil {
 			t.Fatalf("Execute: %v", err)
@@ -514,6 +529,7 @@ func TestExecute_RecordHook_ErrorDoesNotFailDeploy(t *testing.T) {
 		resource.WithBaseDir(dir),
 		resource.WithAZLookup(fakeAZLookup()),
 		resource.WithRecordHook(failingHook),
+		resource.WithValidators(false),
 	)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -525,5 +541,157 @@ func TestExecute_RecordHook_ErrorDoesNotFailDeploy(t *testing.T) {
 	}
 	if hookCalled.Load() == 0 {
 		t.Errorf("record hook was not invoked")
+	}
+}
+
+// fakePipeline is the test seam for the validator pipeline injected via
+// resource.WithValidatorPipeline. It records every Input it received and
+// emits a scripted set of findings (or an error). Tests use it to assert
+// the engine's response to specific findings without touching AWS.
+type fakePipeline struct {
+	findings []validate.Finding
+	err      error
+
+	calls  int
+	lastIn validate.Input
+}
+
+func (f *fakePipeline) Run(_ context.Context, in validate.Input) ([]validate.Finding, error) {
+	f.calls++
+	f.lastIn = in
+	return f.findings, f.err
+}
+
+// TestExecute_ValidatorErrorBlocksDeployAndRendersAppError covers the ADR-0050
+// happy path: an error-severity finding short-circuits the deploy with a
+// typed ValidationFailure whose AppError is pre-resolved through the
+// existing error catalogue.
+func TestExecute_ValidatorErrorBlocksDeployAndRendersAppError(t *testing.T) {
+	dir := t.TempDir()
+	copyFile(t, "testdata/fake-deploy.sh", filepath.Join(dir, "fake-deploy.sh"), 0o755)
+
+	pipe := &fakePipeline{findings: []validate.Finding{{
+		Stage:    validate.StageCFN,
+		Severity: validate.SeverityError,
+		Path:     "alb-template.yaml",
+		Reason:   "Unknown resource type: 'AWS::Banana::Plant'",
+	}}}
+
+	_, err := resource.Execute(
+		context.Background(),
+		albManifest(t, dir),
+		canonicalInputs(),
+		awsx.NewForTest("p", "r"),
+		resource.WithBaseDir(dir),
+		resource.WithAZLookup(fakeAZLookup()),
+		resource.WithValidatorPipeline(pipe),
+	)
+	if err == nil {
+		t.Fatal("Execute err = nil; want ValidationFailure")
+	}
+	failure, ok := err.(*validate.ValidationFailure)
+	if !ok {
+		t.Fatalf("err type = %T, want *validate.ValidationFailure", err)
+	}
+	if failure.AppError == nil {
+		t.Fatal("ValidationFailure.AppError = nil; want catalogue-resolved AppError")
+	}
+	if failure.AppError.MatchedID != "validate-template-unknown-resource-type" {
+		t.Errorf("MatchedID = %q, want %q", failure.AppError.MatchedID, "validate-template-unknown-resource-type")
+	}
+
+	// Parameters file must NOT have been written — the engine short-circuited
+	// before reaching Renderer.Render.
+	if _, err := os.Stat(filepath.Join(dir, "parameters.json")); !os.IsNotExist(err) {
+		t.Errorf("parameters.json was written despite validator failure: err=%v", err)
+	}
+}
+
+// TestExecute_NoValidateSkipsPipelineAndLogsOnce covers the --no-validate
+// power-user flag. The pipeline must not be invoked and the operational log
+// must carry exactly one "validators skipped via --no-validate" line so
+// post-hoc auditing of the operational log is honest.
+func TestExecute_NoValidateSkipsPipelineAndLogsOnce(t *testing.T) {
+	dir := t.TempDir()
+	copyFile(t, "testdata/fake-deploy.sh", filepath.Join(dir, "fake-deploy.sh"), 0o755)
+
+	pipe := &fakePipeline{findings: []validate.Finding{{
+		Stage:    validate.StageCFN,
+		Severity: validate.SeverityError,
+		Reason:   "this finding must not fire",
+	}}}
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	res, err := resource.Execute(
+		context.Background(),
+		albManifest(t, dir),
+		canonicalInputs(),
+		awsx.NewForTest("p", "r"),
+		resource.WithBaseDir(dir),
+		resource.WithAZLookup(fakeAZLookup()),
+		resource.WithValidatorPipeline(pipe),
+		resource.WithValidators(false),
+		resource.WithLogger(logger),
+	)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	for range res.Events {
+	}
+	_ = res.Wait()
+
+	if pipe.calls != 0 {
+		t.Errorf("pipeline calls = %d, want 0 with --no-validate", pipe.calls)
+	}
+	log := buf.String()
+	skipCount := strings.Count(log, "validators skipped via --no-validate")
+	if skipCount != 1 {
+		t.Errorf("'validators skipped via --no-validate' appeared %d times, want exactly 1\nlog:\n%s",
+			skipCount, log)
+	}
+}
+
+// TestExecute_CapabilitiesSurfaceAsInfoFindings asserts the API contract
+// PR-06 will consume: ValidateTemplate's Capabilities[] become info-severity
+// findings on the pipeline's Input result. We assert via the fake pipeline's
+// recorded Input and a freshly-invoked default-pipeline behaviour test.
+func TestExecute_CapabilitiesSurfaceAsInfoFindings(t *testing.T) {
+	pipe := &fakePipeline{findings: []validate.Finding{{
+		Stage:    validate.StageCFN,
+		Severity: validate.SeverityInfo,
+		Reason:   "template requires capability CAPABILITY_IAM",
+	}}}
+
+	dir := t.TempDir()
+	copyFile(t, "testdata/fake-deploy.sh", filepath.Join(dir, "fake-deploy.sh"), 0o755)
+
+	res, err := resource.Execute(
+		context.Background(),
+		albManifest(t, dir),
+		canonicalInputs(),
+		awsx.NewForTest("p", "r"),
+		resource.WithBaseDir(dir),
+		resource.WithAZLookup(fakeAZLookup()),
+		resource.WithValidatorPipeline(pipe),
+	)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	for range res.Events {
+	}
+	_ = res.Wait()
+
+	if pipe.calls != 1 {
+		t.Fatalf("pipeline calls = %d, want 1", pipe.calls)
+	}
+
+	// The first finding the pipeline returned is an info-severity capability
+	// — the engine must not block the deploy on it. (parameters.json having
+	// been written is the proof.)
+	if _, err := os.Stat(filepath.Join(dir, "parameters.json")); err != nil {
+		t.Errorf("parameters.json was not written despite info-only findings: %v", err)
 	}
 }

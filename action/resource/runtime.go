@@ -13,11 +13,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
+	"path/filepath"
 	"sync"
 	"text/template"
 	"time"
 
 	"github.com/bannaarr01/packwright/awsx"
+	"github.com/bannaarr01/packwright/internal/validate"
 	"github.com/bannaarr01/packwright/manifest"
 	"github.com/bannaarr01/packwright/render/cfn"
 )
@@ -93,10 +96,13 @@ type RecordHook func(ctx context.Context, stackName string, deployErr error)
 type Option func(*config)
 
 type config struct {
-	baseDir    string
-	events     cfn.EventsAPI
-	az         AZLookup
-	recordHook RecordHook
+	baseDir            string
+	events             cfn.EventsAPI
+	az                 AZLookup
+	recordHook         RecordHook
+	validatorsDisabled bool
+	pipeline           validate.Pipeline
+	log                *slog.Logger
 }
 
 // WithBaseDir tells the renderer how to interpret the manifest's relative
@@ -126,6 +132,33 @@ func WithAZLookup(fn AZLookup) Option {
 // hook (the default) disables the call.
 func WithRecordHook(hook RecordHook) Option {
 	return func(c *config) { c.recordHook = hook }
+}
+
+// WithValidators toggles the pre-render template validator pipeline (ADR-0050).
+// Enabled by default; passing false threads the --no-validate flag through to
+// Execute so the YAML lint and CloudFormation ValidateTemplate stages are
+// skipped. The skip is session-scoped and never persisted; Execute logs once
+// when validators are disabled so post-hoc auditing of the operational log
+// remains honest.
+func WithValidators(enabled bool) Option {
+	return func(c *config) { c.validatorsDisabled = !enabled }
+}
+
+// WithValidatorPipeline injects a custom validate.Pipeline. The default is
+// validate.NewDefault(), which runs the YAML lint stage and the CFN
+// ValidateTemplate stage. Tests inject a fake pipeline to assert on the
+// engine's response to specific findings without depending on a live AWS
+// account.
+func WithValidatorPipeline(p validate.Pipeline) Option {
+	return func(c *config) { c.pipeline = p }
+}
+
+// WithLogger overrides the slog.Logger Execute uses for operational lines
+// (e.g. "validators skipped via --no-validate"). Defaults to slog.Default()
+// when unset. The deploy script's stdout/stderr is unaffected — it always
+// flows through Result.Events regardless of this logger.
+func WithLogger(l *slog.Logger) Option {
+	return func(c *config) { c.log = l }
 }
 
 // Execute validates the inputs against the manifest, writes parameters.json,
@@ -174,6 +207,12 @@ func Execute(
 		return nil, fmt.Errorf("resource: resolve env: %w", err)
 	}
 	stackName := env["STACK_NAME"]
+
+	if failure, err := runValidators(ctx, &cfg, m, inputs, stackName, awsClient); err != nil {
+		return nil, err
+	} else if failure != nil {
+		return nil, failure
+	}
 
 	r := &cfn.Renderer{BaseDir: cfg.baseDir}
 	if err := r.Render(m, map[string]any(inputs)); err != nil {
@@ -315,4 +354,80 @@ func subnetAZLookup(awsClient *awsx.Client, inputs Inputs) AZLookup {
 		}
 		return "", fmt.Errorf("subnet %s not found in VPC %s", subnetID, vpcID)
 	}
+}
+
+// runValidators applies the template validator pipeline (ADR-0050). When
+// validators are disabled via WithValidators(false), it logs one operational
+// line and returns without touching the AWS network. Otherwise it builds the
+// default pipeline against the manifest's template paths and the awsClient's
+// CloudFormation surface, runs it, and returns a typed ValidationFailure on
+// the first error-severity finding so the existing error model (ADR-0016)
+// can render it.
+//
+// The cfg may carry a caller-supplied pipeline (tests, future PR-06); when
+// nil, the default pipeline is used. Findings that are not error-severity
+// (capability and parameter infos from Stage 2) are dropped here — PR-06
+// will surface them through the form flow once the update path lands.
+func runValidators(
+	ctx context.Context,
+	cfg *config,
+	m *manifest.Manifest,
+	inputs Inputs,
+	stackName string,
+	awsClient *awsx.Client,
+) (*validate.ValidationFailure, error) {
+	log := cfg.log
+	if log == nil {
+		log = slog.Default()
+	}
+	if cfg.validatorsDisabled {
+		log.Info("validators skipped via --no-validate", slog.String("stack", stackName))
+		return nil, nil
+	}
+	if m.Template == nil || m.Template.Path == "" {
+		// No template declared: nothing for the validators to inspect.
+		// resource_runner.Validate already rejects manifests with no
+		// template spec; the field-level guard here keeps Execute usable
+		// for tests that construct a partial manifest by hand.
+		return nil, nil
+	}
+
+	pipeline := cfg.pipeline
+	useDefaultCFN := pipeline == nil
+	if pipeline == nil {
+		pipeline = validate.NewDefault()
+	}
+
+	in := validate.Input{
+		TemplatePath: resolveValidatorPath(cfg.baseDir, m.Template.Path),
+		StackName:    stackName,
+	}
+	if m.Template.ParametersFile != "" {
+		in.ParametersPath = resolveValidatorPath(cfg.baseDir, m.Template.ParametersFile)
+	}
+	// Only build the live CloudFormation client when the engine is running
+	// the default pipeline. Tests that inject their own pipeline pass the
+	// fake AWS surface through the pipeline itself, so the engine never
+	// needs to touch awsClient.CloudFormation() on the test path — that
+	// matters because awsx.NewForTest produces a Client without SDK
+	// config and CloudFormation() would panic.
+	if useDefaultCFN {
+		in.AWS = awsClient.CloudFormation()
+	}
+
+	findings, err := pipeline.Run(ctx, in)
+	if err != nil {
+		return nil, fmt.Errorf("resource: validate: %w", err)
+	}
+	if failure := validate.FailureFromFindings(findings, stackName, map[string]any(inputs)); failure != nil {
+		return failure, nil
+	}
+	return nil, nil
+}
+
+func resolveValidatorPath(baseDir, p string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(baseDir, p)
 }

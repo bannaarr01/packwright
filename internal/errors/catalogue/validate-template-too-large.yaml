@@ -1,0 +1,14 @@
+id: validate-template-too-large
+priority: 40
+match:
+  aws_service: CloudFormation
+  aws_code: ValidationError
+  raw_regex: "(?:[Mm]ember must have length less than or equal to 51200|[Tt]emplate body is too large|[Tt]emplate body is invalid because it is too large)"
+title: "Template is too large for inline validation"
+cause: "CloudFormation rejected the inline TemplateBody because it exceeds the 51,200-byte limit. ValidateTemplate (and CreateStack) require templates larger than that to be uploaded to S3 first and referenced by TemplateURL."
+suggested:
+  - "Enable the (future) opt-in 'scratch S3 bucket' setting in config.yaml once it ships; Packwright will upload the template and re-run validation automatically."
+  - "Meanwhile, shrink the template (move repeated blocks into nested stacks, drop unused resources) so it fits inline."
+  - "Or run with --no-validate to skip both stages — the deploy will still upload to S3 if the deploy script does so."
+console_url: "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cloudformation-limits.html"
+retryable: true
