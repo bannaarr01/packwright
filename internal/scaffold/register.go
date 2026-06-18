@@ -35,6 +35,11 @@ const (
 	FieldPackAuthor      = "Author"
 	FieldPackHomepage    = "Homepage"
 	FieldPackParentDir   = "ParentDir"
+	// FieldReady toggles the ADR-0047 "draft by default" behaviour.
+	// When the wizard collects Ready=true the scaffolder skips the
+	// `_draft: true` header and emits a manifest that is immediately
+	// deployable; the form-level default is false.
+	FieldReady = "Ready"
 )
 
 // WizardManifests returns the two built-in wizard manifests in slash order.
@@ -253,6 +258,7 @@ func specFromInputs(in action.Inputs) (Spec, string, error) {
 		Kind:  manifest.Kind(kindStr),
 		Slash: firstString(in, FieldSlash),
 		Title: firstString(in, FieldTitle),
+		Ready: boolInput(in, FieldReady),
 	}
 
 	if spec.Kind == manifest.KindResource {
@@ -295,6 +301,24 @@ func stringInput(in action.Inputs, key string) (string, bool) {
 func firstString(in action.Inputs, key string) string {
 	s, _ := stringInput(in, key)
 	return s
+}
+
+// boolInput coerces an action.Inputs entry into a bool. Missing keys and
+// unrecognised values both yield false — the safe default for the
+// scaffold's draft-by-default contract.
+func boolInput(in action.Inputs, key string) bool {
+	raw, ok := in[key]
+	if !ok {
+		return false
+	}
+	switch v := raw.(type) {
+	case bool:
+		return v
+	case string:
+		return v == "true"
+	default:
+		return false
+	}
 }
 
 // slugFromSlash strips the leading slash and replaces inner slashes with
