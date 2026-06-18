@@ -14,12 +14,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"sync"
 	"text/template"
 	"time"
 
 	"github.com/bannaarr01/packwright/awsx"
+	"github.com/bannaarr01/packwright/internal/update"
 	"github.com/bannaarr01/packwright/internal/validate"
 	"github.com/bannaarr01/packwright/manifest"
 	"github.com/bannaarr01/packwright/render/cfn"
@@ -103,6 +105,45 @@ type config struct {
 	validatorsDisabled bool
 	pipeline           validate.Pipeline
 	log                *slog.Logger
+	update             *UpdateOptions
+}
+
+// UpdateOptions switches Execute into the ADR-0048 in-place update flow:
+// the engine bypasses the deploy script and instead drives the change-set
+// lifecycle (Create → Describe → consent → Execute) directly through
+// internal/update. The script driver remains the runtime for `create`
+// deploys; this is the only ADR-0008 carve-out.
+type UpdateOptions struct {
+	// StackName is the existing stack to update. When empty, Execute
+	// reads STACK_NAME from the resolved env (the same env var the
+	// script driver consumes).
+	StackName string
+	// PreviousParameters is the snapshot of the stack's current
+	// parameter values, used to compute parameter deltas in the diff.
+	// Caller (PR-02 stack-record loader) supplies this; nil is
+	// acceptable and disables the old → new comparison.
+	PreviousParameters map[string]string
+	// Capabilities lists the IAM capabilities CFN must acknowledge to
+	// process this template. ADR-0048 will eventually surface these
+	// through the manifest schema; until then, the caller (stack-record
+	// loader / form layer) forwards them on each update.
+	Capabilities []string
+	// API is the change-set client. Required.
+	API cfn.ChangeSetAPI
+	// Consent is the replacement-consent gate (ADR-0036). Nil = always
+	// approve (suitable for headless tests).
+	Consent update.ConsentGate
+	// Harvest is the post-execute record write (PR-02). Nil = skip.
+	Harvest update.Harvester
+	// Stream is the CFN-events seam used after Execute. Nil = no
+	// streaming (the caller can build their own poller off StackName).
+	Stream update.EventStreamer
+	// PollInterval is the DescribeChangeSet poll cadence. Zero = 1 Hz.
+	PollInterval time.Duration
+	// Description optionally annotates the change set inside AWS.
+	Description string
+	// ChangeSetName overrides the auto-generated name; tests pin it.
+	ChangeSetName string
 }
 
 // WithBaseDir tells the renderer how to interpret the manifest's relative
@@ -161,6 +202,19 @@ func WithLogger(l *slog.Logger) Option {
 	return func(c *config) { c.log = l }
 }
 
+// WithUpdate switches Execute into the in-place update flow (ADR-0048).
+// When set, Execute bypasses the script driver and drives a change-set
+// preview / execute through internal/update instead. The supplied
+// UpdateOptions carry the change-set client, consent gate, harvester, and
+// streaming seam. Passing a nil API panics at call time — the update
+// branch cannot proceed without it.
+func WithUpdate(opts UpdateOptions) Option {
+	return func(c *config) {
+		o := opts
+		c.update = &o
+	}
+}
+
 // Execute validates the inputs against the manifest, writes parameters.json,
 // spawns the manifest's deploy script with the resolved env, and starts the
 // CloudFormation event poller (when one is configured). It returns a Result
@@ -212,6 +266,13 @@ func Execute(
 		return nil, err
 	} else if failure != nil {
 		return nil, failure
+	}
+
+	// ADR-0048 update branch: skip the script driver entirely and drive
+	// the change-set lifecycle through internal/update. The deploy script
+	// remains the runtime for `create` deploys (cfg.update == nil).
+	if cfg.update != nil {
+		return executeUpdate(ctx, m, inputs, cfg, stackName)
 	}
 
 	r := &cfn.Renderer{BaseDir: cfg.baseDir}
@@ -326,6 +387,151 @@ func resolveEnv(envSpec map[string]string, inputs Inputs, awsClient *awsx.Client
 		out[k] = buf.String()
 	}
 	return out, nil
+}
+
+// executeUpdate is the ADR-0048 update-flow branch of Execute. It reads
+// the template body from the manifest, builds the change-set input from
+// the form snapshot, calls update.Stack, and adapts the typed StackResult
+// onto the same *Result shape Execute returns for the script-deploy path.
+// The Events channel multiplexes the streamed cfn.StackEvents into our
+// Event type (Source=SourceCFN) so consumers (TUI/GUI) don't need to
+// distinguish the two paths.
+func executeUpdate(
+	ctx context.Context,
+	m *manifest.Manifest,
+	inputs Inputs,
+	cfg config,
+	stackName string,
+) (*Result, error) {
+	opts := cfg.update
+	if opts.API == nil {
+		return nil, fmt.Errorf("resource: update mode requires a ChangeSetAPI")
+	}
+	name := opts.StackName
+	if name == "" {
+		name = stackName
+	}
+	if name == "" {
+		return nil, fmt.Errorf("resource: update mode requires a stack name (set UpdateOptions.StackName or manifest env STACK_NAME)")
+	}
+
+	// The change-set API consumes the template body inline. We resolve
+	// the manifest's template path against cfg.baseDir and read it from
+	// disk — there is no script involvement.
+	if m.Template == nil || m.Template.Path == "" {
+		return nil, fmt.Errorf("resource: update mode requires manifest.template.path")
+	}
+	templatePath := filepath.Join(cfg.baseDir, m.Template.Path)
+	if filepath.IsAbs(m.Template.Path) {
+		templatePath = m.Template.Path
+	}
+	body, err := os.ReadFile(templatePath)
+	if err != nil {
+		return nil, fmt.Errorf("resource: read template: %w", err)
+	}
+
+	params := parametersFromInputs(m, inputs)
+
+	res, err := update.Stack(ctx, update.StackInput{
+		StackName:          name,
+		TemplateBody:       string(body),
+		Parameters:         params,
+		PreviousParameters: opts.PreviousParameters,
+		Capabilities:       append([]string(nil), opts.Capabilities...),
+		Description:        opts.Description,
+		ChangeSetName:      opts.ChangeSetName,
+	}, update.StackOptions{
+		API:          opts.API,
+		Consent:      opts.Consent,
+		Harvest:      opts.Harvest,
+		Stream:       opts.Stream,
+		PollInterval: opts.PollInterval,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return adaptUpdateResult(name, res), nil
+}
+
+// adaptUpdateResult wraps an update.StackResult onto the *Result shape
+// callers consume. Outputs and Status are left zero; the caller surfaces
+// res.Notice / res.Diff directly through the typed StackResult attached
+// to ctx in PR-09 / PR-10.
+//
+// For the no-changes / consent-denied paths the wrapped channel is
+// already closed (matching the script-deploy convention of "Events
+// channel closed once both sources are done").
+func adaptUpdateResult(stackName string, r update.StackResult) *Result {
+	events := make(chan Event, 8)
+	go func() {
+		defer close(events)
+		if r.Events == nil {
+			return
+		}
+		for ev := range r.Events {
+			e := ev
+			events <- Event{Time: e.Time, Source: SourceCFN, Stack: &e}
+		}
+	}()
+	return &Result{
+		StackName: stackName,
+		Events:    events,
+		wait:      func() error { return nil },
+	}
+}
+
+// parametersFromInputs converts the engine's typed Inputs into the
+// string-keyed map the change-set API requires. Only manifest-declared
+// fields are emitted, matching the renderer's MarshalParameters convention.
+func parametersFromInputs(m *manifest.Manifest, inputs Inputs) map[string]string {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]string, len(inputs))
+	for _, f := range m.Form {
+		v, ok := inputs[f.ID]
+		if !ok {
+			continue
+		}
+		s := stringifyInput(v)
+		if s == "" {
+			continue
+		}
+		out[f.ID] = s
+	}
+	return out
+}
+
+// stringifyInput returns the wire form of a manifest-input value. Strings
+// pass through; numbers / bools stringify; comma-joined for slices.
+func stringifyInput(v any) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case []string:
+		joined := ""
+		for i, s := range x {
+			if i > 0 {
+				joined += ","
+			}
+			joined += s
+		}
+		return joined
+	case int:
+		return fmt.Sprintf("%d", x)
+	case int64:
+		return fmt.Sprintf("%d", x)
+	case bool:
+		if x {
+			return "true"
+		}
+		return "false"
+	case nil:
+		return ""
+	default:
+		return fmt.Sprintf("%v", x)
+	}
 }
 
 // subnetAZLookup adapts awsx.Client.ListSubnets (which is VPC-scoped) to the
