@@ -74,6 +74,12 @@ var knownFieldTypes = map[FieldType]struct{}{
 // Manifest is the top-level structure decoded from a YAML manifest file. The
 // Template / Deploy / Form sections are kind-specific: only KindResource
 // populates Template + Deploy in MVP-1; other kinds keep them nil.
+//
+// Draft and CopiedFrom are MVP-7 metadata (ADR-0047). They live under the
+// "_"-prefixed root-key convention so any future "ephemeral metadata" key
+// (e.g. _archived, _pinned) can land without revisiting this struct. Callers
+// touch them through internal/manifest/draft.go helpers — IsDraft, MarkDraft,
+// Promote, CopiedFrom — rather than the fields directly.
 type Manifest struct {
 	SchemaVersion string        `yaml:"schema_version"`
 	Kind          Kind          `yaml:"kind"`
@@ -82,6 +88,9 @@ type Manifest struct {
 	Template      *TemplateSpec `yaml:"template,omitempty"`
 	Deploy        *DeploySpec   `yaml:"deploy,omitempty"`
 	Form          []Field       `yaml:"form,omitempty"`
+
+	Draft      bool   `yaml:"_draft,omitempty"`
+	CopiedFrom string `yaml:"_copied_from,omitempty"`
 }
 
 // TemplateSpec describes the infrastructure-as-code template that backs a

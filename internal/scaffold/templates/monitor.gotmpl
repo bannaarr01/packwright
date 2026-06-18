@@ -4,6 +4,9 @@
 # kind: monitor — declares a dashboard. Panels are wired in later MVPs once
 # the loader gains the `monitor:` section; this stub establishes the slash
 # command so the surface picks it up immediately.
+{{- if not .Ready }}
+_draft: true
+{{- end }}
 schema_version: packwright.manifest.v1
 kind: monitor
 slash: {{ .Slash }}

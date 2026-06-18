@@ -3,6 +3,12 @@
 #
 # kind: resource — provisions an AWS resource via an IaC template. The
 # engine renders the form, fills `parameters_file`, and runs `deploy.script`.
+{{- if not .Ready }}
+# Marked as a draft (ADR-0047) so the engine refuses to deploy it until
+# `/promote-template {{ .Slash }}` removes the `_draft: true` line. Scaffold
+# with --ready to skip the draft step.
+_draft: true
+{{- end }}
 schema_version: packwright.manifest.v1
 kind: resource
 slash: {{ .Slash }}

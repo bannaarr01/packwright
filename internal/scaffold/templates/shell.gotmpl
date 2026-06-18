@@ -3,6 +3,9 @@
 #
 # kind: shell — runs a templated subprocess. The runtime substitutes form
 # field IDs into command-array elements before invoking exec; see ADR-0014.
+{{- if not .Ready }}
+_draft: true
+{{- end }}
 schema_version: packwright.manifest.v1
 kind: shell
 slash: {{ .Slash }}

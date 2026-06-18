@@ -4,6 +4,9 @@
 # kind: composite — runs a sequence of existing slash commands. The
 # step list lives in a future `composite:` section; this stub registers
 # the slash command so the surface can present it immediately.
+{{- if not .Ready }}
+_draft: true
+{{- end }}
 schema_version: packwright.manifest.v1
 kind: composite
 slash: {{ .Slash }}
