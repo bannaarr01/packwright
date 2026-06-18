@@ -3,16 +3,27 @@
   import { EventsOn } from '../../wailsjs/wailsjs/runtime/runtime';
   import { api, type SlashCommand } from '../api';
   import logoIconUrl from '../../assets/logo-icon.svg';
+  import { grouping } from './grouping';
+  import GroupingToggle from './GroupingToggle.svelte';
+  import IndependentGroup from './IndependentGroup.svelte';
+  import ProjectsView from './ProjectsView.svelte';
 
   // Sidebar — the browsable surface for Packwright's major functions. The
   // palette (⌘K) remains the canonical entry point; this is a discovery
-  // affordance for users who want to see what their pack registry contains
-  // without typing first.
+  // affordance for users who want to see what their pack registry and
+  // workspace contain without typing first.
   //
-  // Data comes from the same Go binding the palette uses (api.listSlashCommands)
-  // — the Go side already groups by source. We re-subscribe to the
-  // packwright:palette-changed event so a manifest edit refreshes both
-  // surfaces atomically.
+  // PR-10 splits the body in two:
+  //   - Projects mode (default): ProjectsView renders the Project → Env →
+  //     Stack tree, badged with the broad status from each record.
+  //   - By-pack mode: IndependentGroup renders today's user / pack /
+  //     wizards grouping, unchanged.
+  //
+  // The grouping store is backed by localStorage so the user's choice
+  // survives refresh. The two views own their own data fetches; this
+  // component holds only the surrounding chrome (drag rail, brand,
+  // search, quick actions, footer) and the slash-command list that the
+  // quick-action wizard buttons need.
 
   interface Props {
     collapsed: boolean;
@@ -27,13 +38,12 @@
   const { collapsed, profile, region, account, onToggle, onRunSlash, onOpenPalette }: Props =
     $props();
 
+  // SlashCommand list lives here (instead of inside IndependentGroup)
+  // because the wizard quick-action buttons in the sidebar chrome also
+  // need it. Sharing a single fetch keeps the palette-changed event from
+  // firing two re-fetches per manifest edit.
   let items = $state<SlashCommand[]>([]);
   let query = $state('');
-  let openSections = $state<Record<string, boolean>>({
-    user: true,
-    packs: true,
-    wizards: true,
-  });
 
   async function refresh() {
     try {
@@ -49,51 +59,6 @@
     const off = EventsOn('packwright:palette-changed', () => refresh());
     return () => off?.();
   });
-
-  // Group rows the way the user actually scans them: user-scope commands
-  // first, then packs (each pack as its own subhead), then the trailing
-  // wizards. Inside each group rows preserve LoadPalette's order, which
-  // already honours pin promotion + alphabetical fallback.
-  interface Group {
-    key: string;
-    label: string;
-    rows: SlashCommand[];
-  }
-
-  const grouped = $derived.by<Group[]>(() => {
-    const q = query.trim().toLowerCase();
-    const match = (r: SlashCommand) =>
-      q === '' || r.slash.toLowerCase().includes(q) || r.title.toLowerCase().includes(q);
-
-    const user: SlashCommand[] = [];
-    const wizards: SlashCommand[] = [];
-    const packMap = new Map<string, SlashCommand[]>();
-
-    for (const r of items) {
-      if (!match(r)) continue;
-      if (r.source === 'builtin') {
-        wizards.push(r);
-      } else if (r.scope === 'user') {
-        user.push(r);
-      } else {
-        const bucket = packMap.get(r.source) ?? [];
-        bucket.push(r);
-        packMap.set(r.source, bucket);
-      }
-    }
-
-    const groups: Group[] = [];
-    if (user.length) groups.push({ key: 'user', label: 'Commands', rows: user });
-    for (const [name, rows] of [...packMap].sort(([a], [b]) => a.localeCompare(b))) {
-      groups.push({ key: `pack:${name}`, label: name, rows });
-    }
-    if (wizards.length) groups.push({ key: 'wizards', label: 'Wizards', rows: wizards });
-    return groups;
-  });
-
-  function toggleSection(key: string) {
-    openSections[key] = !(openSections[key] ?? true);
-  }
 
   function runWizard(slash: '/new-command' | '/new-pack') {
     const w = items.find((r) => r.slash === slash && r.source === 'builtin');
@@ -187,6 +152,14 @@
     </div>
   {/if}
 
+  <!-- Grouping toggle: chooses which body view renders below. Hidden when
+       the sidebar is collapsed since neither label fits in the 56px rail. -->
+  {#if !collapsed}
+    <div class="px-3 pb-3">
+      <GroupingToggle />
+    </div>
+  {/if}
+
   <!-- Quick actions: surface the two scaffold wizards as primary entry
        points. They're the one-click "I want to start" affordances. -->
   <div class="px-3 pb-3 space-y-1">
@@ -233,91 +206,19 @@
   <div class="h-px mx-3 bg-dark-border/40 mb-2" aria-hidden="true"></div>
 
   <!-- Sections list. The whole region scrolls if it overflows; the sidebar
-       footer stays pinned. -->
+       footer stays pinned. The body view is chosen by the grouping store —
+       Projects (the workspace tree) or By-pack (today's grouping). -->
   <nav class="flex-1 min-h-0 overflow-y-auto px-2 pb-3 scrollbar-hairline">
-    {#if grouped.length === 0}
-      {#if !collapsed}
-        <div class="px-3 py-6 text-center text-[12px] text-dark-fg/40">
-          {query ? 'No matches.' : 'No commands yet.'}
-        </div>
-      {/if}
+    {#if $grouping === 'projects'}
+      <ProjectsView {query} {collapsed} />
     {:else}
-      {#each grouped as group (group.key)}
-        {@const open = openSections[group.key] ?? true}
-        <div class="mb-2">
-          {#if !collapsed}
-            <button
-              type="button"
-              class="w-full flex items-center justify-between px-2 py-1 text-[10.5px]
-                     uppercase tracking-micro text-dark-fg/40 hover:text-dark-fg/70 transition"
-              onclick={() => toggleSection(group.key)}
-            >
-              <span class="font-mono">{group.label}</span>
-              <span class="flex items-center gap-2">
-                <span class="opacity-60">{group.rows.length}</span>
-                <svg
-                  width="9"
-                  height="9"
-                  viewBox="0 0 16 16"
-                  class="transition-transform"
-                  class:rotate-180={!open}
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path d="M4 6l4 4 4-4" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-              </span>
-            </button>
-          {/if}
-          {#if open || collapsed}
-            <ul class="space-y-0.5 mt-0.5">
-              {#each group.rows as row (group.key + '|' + row.slash + '|' + row.title)}
-                <li>
-                  <button
-                    type="button"
-                    class="w-full flex items-center gap-2.5 px-2 py-[5px] rounded-md
-                           text-left hover:bg-dark-border/30 group transition"
-                    onclick={() => onRunSlash(row)}
-                    title={`${row.slash}  ${row.title}`}
-                  >
-                    {#if collapsed}
-                      <span
-                        class="w-7 h-7 shrink-0 grid place-items-center rounded-md
-                               border border-dark-border/40 group-hover:border-dark-border
-                               font-mono text-[10px] text-dark-fg/70 uppercase"
-                      >
-                        {row.slash.replace(/^\//, '').slice(0, 2)}
-                      </span>
-                    {:else}
-                      <span class="w-1 h-1 rounded-full bg-dark-fg/25 group-hover:bg-dark-accent shrink-0 transition"></span>
-                      <span
-                        class="font-mono text-[12.5px] text-dark-fg/90 truncate"
-                        >{row.slash}</span
-                      >
-                      <span class="text-[12px] text-dark-fg/45 truncate flex-1">{row.title}</span>
-                      {#if row.pinned}
-                        <span
-                          class="font-mono text-[9px] text-dark-accent border border-dark-accent/40
-                                 rounded px-1 py-0.5 leading-none shrink-0"
-                          title="Pinned default"
-                        >
-                          PIN
-                        </span>
-                      {/if}
-                    {/if}
-                  </button>
-                </li>
-              {/each}
-            </ul>
-          {/if}
-        </div>
-      {/each}
+      <IndependentGroup {items} {query} {collapsed} {onRunSlash} />
     {/if}
   </nav>
 
   <!-- Footer pill: AWS context. Mono everything because it's read like a
-       prompt line. -->
+       prompt line. Untouched by PR-10 — the Profile chip stays as the
+       existing UX. -->
   <div class="px-3 py-3 border-t border-dark-border/40 shrink-0">
     {#if collapsed}
       <div

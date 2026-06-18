@@ -1,11 +1,24 @@
+// Wails events emitted by this package:
+//
+//   - packwright:palette-changed   — manifests under pack/command/monitor
+//     roots changed; the palette and the "By pack" sidebar grouping refetch.
+//   - packwright:workspace-changed — anything under <home>/projects/ changed
+//     (a new project.yaml, env.yaml, or stack record JSON). The "Projects"
+//     sidebar grouping refetches ListProjects + ListStacks.
+//
+// Both are pure "something changed, take another look" signals with no
+// payload — the frontend already owns the data-fetching path.
 package gui
 
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/bannaarr01/packwright/config"
+	"github.com/bannaarr01/packwright/internal/record"
 	"github.com/bannaarr01/packwright/internal/theme"
+	"github.com/bannaarr01/packwright/internal/workspace"
 	"github.com/bannaarr01/packwright/pack"
 )
 
@@ -134,4 +147,127 @@ func (a *App) SelectSlashCommand(sc SlashCommand) {
 	a.logger.Info("palette selection",
 		"slash", sc.Slash,
 		"title", sc.Title)
+}
+
+// Project is the sidebar-shape mirror of workspace.Project. The DTO is
+// trimmed to the fields the Projects-grouping sidebar renders so the JSON
+// payload stays small and the frontend is not coupled to internal/workspace
+// shape changes. Profile / Region / Description are intentionally omitted —
+// the active-project chip in the footer reads those via its own binding.
+type Project struct {
+	Slug string `json:"slug"`
+	Name string `json:"name"`
+	Envs []Env  `json:"envs"`
+}
+
+// Env is the sidebar-shape mirror of workspace.Env.
+type Env struct {
+	Slug string `json:"slug"`
+	Name string `json:"name"`
+}
+
+// StackRow is the sidebar row shape for one stack record. Only the columns
+// the sidebar renders are present: the broad status drives the badge, the
+// slash command is the row label, and UpdatedAt is the muted timestamp
+// shown after the name. Resources / Outputs / Parameters are deliberately
+// omitted — opening a stack detail screen will use a separate binding.
+type StackRow struct {
+	Name      string `json:"name"`
+	Slash     string `json:"slash"`
+	Broad     string `json:"broad"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// loadProjects is the package-level seam for ListProjects. Tests stub this
+// to inject fake project trees without writing to disk. The second return
+// value carries the partial-load warnings that workspace.LoadAll
+// accumulates per project — preserved through the seam so ListProjects can
+// log them, mirroring how loadPalette / ListSlashCommands surface palette
+// load failures.
+var loadProjects = func() ([]workspace.Project, []error, error) {
+	home, err := config.Home()
+	if err != nil {
+		return nil, nil, err
+	}
+	projects, warnings := workspace.LoadAll(home)
+	return projects, warnings, nil
+}
+
+// loadStacks is the package-level seam for ListStacks. Tests stub this to
+// return fixture StackRecord slices. The default implementation reads from
+// <home>/projects/<project>/<env>/stacks/.
+var loadStacks = func(project, env string) ([]*record.StackRecord, error) {
+	home, err := config.Home()
+	if err != nil {
+		return nil, err
+	}
+	return record.NewStore(home).List(project, env)
+}
+
+// ListProjects returns the workspace tree (ADR-0045) shaped for the
+// sidebar's Projects grouping. The frontend re-invokes it whenever the
+// packwright:workspace-changed event fires, so creating a project surfaces
+// in the sidebar within one event cycle. A read failure (missing
+// projects/, malformed project.yaml) is logged but returns an empty slice
+// — the sidebar shows the empty-state copy rather than failing the RPC.
+func (a *App) ListProjects() []Project {
+	projects, warnings, err := loadProjects()
+	if err != nil {
+		a.logger.Warn("gui: workspace: load projects", "err", err)
+		return []Project{}
+	}
+	for _, w := range warnings {
+		a.logger.Warn("gui: workspace: partial load", "err", w)
+	}
+	out := make([]Project, 0, len(projects))
+	for _, p := range projects {
+		envs := make([]Env, 0, len(p.Envs))
+		for _, e := range p.Envs {
+			envs = append(envs, Env{Slug: e.Slug, Name: e.Name})
+		}
+		out = append(out, Project{Slug: p.Slug, Name: p.Name, Envs: envs})
+	}
+	a.logger.Info("gui: workspace: list projects", "projects", len(out))
+	return out
+}
+
+// ListStacks returns the stack records persisted under (project, env) per
+// ADR-0046, mapped to the StackRow shape the sidebar renders. Project and
+// env must both be non-empty; for independent stacks the frontend uses
+// ListStacks("", "") which routes to the independent tree inside
+// record.Store. A read failure returns an empty slice (logged) so a single
+// malformed record never blanks the sidebar.
+func (a *App) ListStacks(project, env string) []StackRow {
+	recs, err := loadStacks(project, env)
+	if err != nil {
+		a.logger.Warn("gui: workspace: load stacks",
+			"project", project,
+			"env", env,
+			"err", err)
+		return []StackRow{}
+	}
+	out := make([]StackRow, 0, len(recs))
+	for _, r := range recs {
+		out = append(out, StackRow{
+			Name:      r.StackName,
+			Slash:     r.Manifest.Slash,
+			Broad:     string(r.Status.Broad),
+			UpdatedAt: formatStackTime(r.LastUpdatedAt, r.DeployedAt),
+		})
+	}
+	return out
+}
+
+// formatStackTime returns an RFC3339 string for the most relevant
+// timestamp on a record, or the empty string when neither is set —
+// drafts mostly. The empty string is the contract the StackRow component
+// branches on to skip the muted suffix.
+func formatStackTime(lastUpdated, deployed time.Time) string {
+	if !lastUpdated.IsZero() {
+		return lastUpdated.UTC().Format(time.RFC3339)
+	}
+	if !deployed.IsZero() {
+		return deployed.UTC().Format(time.RFC3339)
+	}
+	return ""
 }

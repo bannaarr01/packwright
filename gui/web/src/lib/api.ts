@@ -40,6 +40,44 @@ export interface ThemePayload {
   tokens: ThemeTokens;
 }
 
+// Workspace tree shapes mirror gui/bindings.go (Project / Env). The DTOs are
+// deliberately a trimmed view of internal/workspace types — only what the
+// Projects-grouping sidebar renders.
+export interface Env {
+  slug: string;
+  name: string;
+}
+
+export interface Project {
+  slug: string;
+  name: string;
+  envs: Env[];
+}
+
+// BroadStatus mirrors internal/record.BroadStatus. The set is closed; the
+// StatusBadge component falls back to a muted "deleted" badge for anything
+// outside the set so a future schema bump never blanks a row.
+export type BroadStatus =
+  | 'draft'
+  | 'deploying'
+  | 'deployed'
+  | 'partial'
+  | 'failed'
+  | 'drifted'
+  | 'deleted';
+
+// StackRow is the sidebar row shape for one persisted stack record. Mirrors
+// gui/bindings.go:StackRow — small payload, no resources or outputs.
+export interface StackRow {
+  name: string;
+  slash: string;
+  broad: BroadStatus | string;
+  // RFC3339 (UTC). Empty string when the record has no deployed_at or
+  // last_updated_at — drafts mostly. The sidebar hides the timestamp in
+  // that case rather than rendering "Invalid Date".
+  updated_at: string;
+}
+
 // Exported so wails-app.d.ts can intersect it with ProfileBindings into the
 // single canonical Window.go.gui.App typing.
 export interface WailsBindings {
@@ -49,6 +87,8 @@ export interface WailsBindings {
   ListSlashCommands(): Promise<SlashCommand[]>;
   Theme(): Promise<ThemePayload>;
   SelectSlashCommand(sc: SlashCommand): Promise<void>;
+  ListProjects(): Promise<Project[]>;
+  ListStacks(project: string, env: string): Promise<StackRow[]>;
 }
 
 // bindings reaches the Wails App methods at runtime. It throws if Wails has
@@ -72,4 +112,6 @@ export const api = {
   listSlashCommands: () => bindings().ListSlashCommands(),
   theme: () => bindings().Theme(),
   selectSlashCommand: (sc: SlashCommand) => bindings().SelectSlashCommand(sc),
+  listProjects: () => bindings().ListProjects(),
+  listStacks: (project: string, env: string) => bindings().ListStacks(project, env),
 };
