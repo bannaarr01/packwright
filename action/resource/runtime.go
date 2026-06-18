@@ -76,15 +76,27 @@ func (r *Result) Wait() error {
 	return r.wait()
 }
 
+// RecordHook is invoked once the deploy script and CFN poller have both
+// terminated. PR-02 wires it to a stack-record harvest (DescribeStacks +
+// DescribeStackResources); the engine itself only knows the signature and
+// stays free of any AWS-record dependency.
+//
+// stackName is the resolved STACK_NAME from the manifest's env templating;
+// deployErr is the script's exit status (nil on success). The hook must NOT
+// return an error: harvest failures are best-effort and the implementation
+// logs them internally. The deploy never fails because the hook did.
+type RecordHook func(ctx context.Context, stackName string, deployErr error)
+
 // Option configures optional Execute behaviour. The base signature follows
 // the plan literally; everything beyond a manifest + inputs + awsx.Client is
 // an Option so the surface stays stable as later PRs grow it.
 type Option func(*config)
 
 type config struct {
-	baseDir string
-	events  cfn.EventsAPI
-	az      AZLookup
+	baseDir    string
+	events     cfn.EventsAPI
+	az         AZLookup
+	recordHook RecordHook
 }
 
 // WithBaseDir tells the renderer how to interpret the manifest's relative
@@ -106,6 +118,14 @@ func WithEvents(api cfn.EventsAPI) Option {
 // deterministic in-memory lookup.
 func WithAZLookup(fn AZLookup) Option {
 	return func(c *config) { c.az = fn }
+}
+
+// WithRecordHook installs a post-deploy hook (typically a stack-record
+// harvest — see internal/record). The engine invokes hook once the deploy
+// subprocess and CFN poller have both exited, before Wait returns. A nil
+// hook (the default) disables the call.
+func WithRecordHook(hook RecordHook) Option {
+	return func(c *config) { c.recordHook = hook }
 }
 
 // Execute validates the inputs against the manifest, writes parameters.json,
@@ -221,7 +241,16 @@ func Execute(
 	go func() {
 		fanIn.Wait()
 		close(merged)
-		deployErr <- waitDeploy()
+		err := waitDeploy()
+		// Best-effort post-deploy harvest. The hook owns its own
+		// error handling — it must not panic and must not block
+		// the deploy result. We run it before publishing the
+		// deploy error so callers blocked on Wait observe both
+		// the exit status and any record write atomically.
+		if cfg.recordHook != nil && stackName != "" {
+			cfg.recordHook(ctx, stackName, err)
+		}
+		deployErr <- err
 	}()
 
 	return &Result{
