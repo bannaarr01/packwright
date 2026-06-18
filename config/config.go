@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/bannaarr01/packwright/internal/workspace"
 )
 
 // Config is the user-editable state stored at <Home>/config.yaml. Fields are
@@ -47,6 +49,21 @@ type Config struct {
 	// An empty string is treated as "stable" so existing config.yaml files
 	// keep working. See ADR-0030.
 	UpdateChannel string `yaml:"update_channel"`
+	// Projects mirrors the on-disk projects tree (ADR-0045). It is a fast
+	// path for the launcher reconciliation: each entry is a Project loaded
+	// from <Home>/projects/<slug>/project.yaml plus its envs. Disk is the
+	// authority for tree structure — Reconcile rewrites this slice from
+	// what it finds under projects/, so out-of-band edits on disk are
+	// observed on next launch.
+	Projects []workspace.Project `yaml:"projects,omitempty"`
+	// ActiveProject is the slug of the project the UI is currently focused
+	// on (sidebar tree, footer chip). Empty means "no active project — the
+	// Independent group is the top of the tree". See ADR-0045.
+	ActiveProject string `yaml:"active_project,omitempty"`
+	// ActiveEnv is the slug of the env within ActiveProject the UI is
+	// focused on. Cleared automatically by Reconcile when it points at an
+	// env that no longer exists on disk.
+	ActiveEnv string `yaml:"active_env,omitempty"`
 }
 
 // Load reads <Home>/config.yaml and returns the parsed Config. When no file

@@ -30,8 +30,10 @@ const envHome = "HOME"
 const envAppData = "APPDATA"
 
 // subdirs are the directories created beneath the Packwright home on first
-// use, mirroring the layout documented in ADR-0010.
-var subdirs = []string{"packs", "commands", "monitors", "cache", "logs"}
+// use, mirroring the layout documented in ADR-0010. "projects" (ADR-0045)
+// is appended additively so existing installs gain the directory on next
+// launch without disturbing the rest of the tree.
+var subdirs = []string{"packs", "commands", "monitors", "cache", "logs", "projects"}
 
 // Home returns the Packwright home directory, creating it (and the standard
 // subdirectory tree: packs/, commands/, monitors/, cache/, logs/) if it does
