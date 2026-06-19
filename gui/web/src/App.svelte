@@ -1,16 +1,21 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api, type SlashCommand, type ThemePayload } from './lib/api';
+  import AIPanel from './lib/ai/AIPanel.svelte';
   import Launcher from './lib/launcher/Launcher.svelte';
   import Palette from './lib/palette/Palette.svelte';
   import RunPanel from './lib/run/RunPanel.svelte';
   import Sidebar from './lib/sidebar/Sidebar.svelte';
+  import StackActionPanel from './lib/stack/StackActionPanel.svelte';
+  import { stackPanel } from './lib/stack/stackPanel';
 
   // Root component. Owns palette state, theme, AWS context, and sidebar
   // collapsed-ness. Sub components read those via props (one-way flow).
   let paletteOpen = $state(false);
   // running holds the command the user picked; non-null opens the run panel.
   let running = $state<SlashCommand | null>(null);
+  // aiOpen toggles the AI assistant panel (opened from the sidebar).
+  let aiOpen = $state(false);
   let theme = $state<ThemePayload | null>(null);
   let profile = $state('-');
   let region = $state('-');
@@ -104,6 +109,7 @@
     onToggle={toggleSidebar}
     onRunSlash={runSlash}
     onOpenPalette={() => (paletteOpen = true)}
+    onOpenAI={() => (aiOpen = true)}
   />
 
   <main class="flex-1 relative flex flex-col min-w-0">
@@ -136,6 +142,16 @@
       {/if}
       {#if running}
         <RunPanel slash={running.slash} title={running.title} onClose={() => (running = null)} />
+      {/if}
+      {#if $stackPanel}
+        <!-- Keyed so switching to a different stack remounts the panel with
+             fresh state rather than carrying over the previous flow. -->
+        {#key $stackPanel.stack}
+          <StackActionPanel target={$stackPanel} onClose={() => stackPanel.set(null)} />
+        {/key}
+      {/if}
+      {#if aiOpen}
+        <AIPanel onClose={() => (aiOpen = false)} />
       {/if}
     </section>
   </main>

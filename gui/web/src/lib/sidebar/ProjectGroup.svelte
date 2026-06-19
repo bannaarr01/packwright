@@ -128,7 +128,7 @@
                 {:else}
                   {#each rows as row (row.name)}
                     <li>
-                      <StackRowComponent {row} />
+                      <StackRowComponent {row} project={project.slug} env={env.slug} />
                     </li>
                   {/each}
                 {/if}

@@ -33,10 +33,19 @@
     onToggle: () => void;
     onRunSlash: (sc: SlashCommand) => void;
     onOpenPalette: () => void;
+    onOpenAI: () => void;
   }
 
-  const { collapsed, profile, region, account, onToggle, onRunSlash, onOpenPalette }: Props =
-    $props();
+  const {
+    collapsed,
+    profile,
+    region,
+    account,
+    onToggle,
+    onRunSlash,
+    onOpenPalette,
+    onOpenAI,
+  }: Props = $props();
 
   // SlashCommand list lives here (instead of inside IndependentGroup)
   // because the wizard quick-action buttons in the sidebar chrome also
@@ -160,9 +169,29 @@
     </div>
   {/if}
 
-  <!-- Quick actions: surface the two scaffold wizards as primary entry
-       points. They're the one-click "I want to start" affordances. -->
+  <!-- Quick actions: surface the two scaffold wizards plus the AI assistant
+       as primary entry points. They're the one-click "I want to start"
+       affordances. -->
   <div class="px-3 pb-3 space-y-1">
+    <button
+      type="button"
+      class="w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-left
+             hover:bg-dark-border/30 transition group"
+      onclick={onOpenAI}
+      title="AI assistant"
+    >
+      <span
+        class="w-7 h-7 shrink-0 grid place-items-center rounded-md
+               border border-dark-border/70 group-hover:border-dark-accent/60 transition"
+      >
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M2.5 4.5A1.5 1.5 0 014 3h8a1.5 1.5 0 011.5 1.5v5A1.5 1.5 0 0112 11H6l-3 2.5V11H4a1.5 1.5 0 01-1.5-1.5v-5z" stroke-linejoin="round" />
+        </svg>
+      </span>
+      {#if !collapsed}
+        <span class="text-[13px]">AI assistant</span>
+      {/if}
+    </button>
     <button
       type="button"
       class="w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-left
