@@ -1,21 +1,24 @@
 <script lang="ts">
   import type { StackRow } from '../api';
+  import { stackPanel } from '../stack/stackPanel';
   import StatusBadge from './StatusBadge.svelte';
 
   // StackRow — one stack inside an env group. Renders the broad-status
   // badge, the stack name (mono, the user's identity for the row), and the
   // last-updated timestamp as a muted suffix when present.
   //
-  // No click handler in this PR — opening a stack-detail screen lands in a
-  // later PR (the TUI's record screen is PR-09; the GUI's parallel is
-  // queued). The row is rendered as a button anyway so future wiring is a
-  // one-line change and keyboard focus works today.
+  // Clicking the row opens the StackActionPanel (update / scale / delete) for
+  // this stack. ProjectGroup supplies the project/env coordinate the panel and
+  // the Go bindings need; the click sets the shared stackPanel store, which
+  // App.svelte renders against.
 
   interface Props {
     row: StackRow;
+    project: string;
+    env: string;
   }
 
-  const { row }: Props = $props();
+  const { row, project, env }: Props = $props();
 
   const updated = $derived.by(() => {
     if (!row.updated_at) return '';
@@ -33,6 +36,7 @@
   class="w-full flex items-center gap-2 px-2 py-[5px] rounded-md
          text-left hover:bg-dark-border/30 group transition"
   title={`${row.slash}  ${row.name}`}
+  onclick={() => stackPanel.set({ project, env, stack: row.name, slash: row.slash })}
 >
   <StatusBadge broad={row.broad} />
   <span class="font-mono text-[12.5px] text-dark-fg/90 truncate min-w-0 flex-1">

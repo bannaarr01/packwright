@@ -50,6 +50,10 @@ type App struct {
 	// the bridge lifecycle can be verified without a live Wails runtime.
 	quit func(context.Context)
 
+	// ai holds the AI chat session state (bindings_ai.go). Kept as a field of
+	// a package-local type so this file needs no AI imports.
+	ai *aiBridge
+
 	logger *slog.Logger
 }
 
@@ -59,7 +63,7 @@ func newApp(logger *slog.Logger) *App {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &App{logger: logger, quit: runtime.Quit}
+	return &App{logger: logger, quit: runtime.Quit, ai: &aiBridge{}}
 }
 
 // startup is invoked by Wails once the webview is ready. It captures the
@@ -121,5 +125,8 @@ func (a *App) shutdown(_ context.Context) {
 		a.workspaceWatcherStop()
 		a.workspaceWatcherStop = nil
 	}
+	// Tear down any live AI session: cancels in-flight turns, closes the
+	// provider, restores the consent modal, and unblocks a pending prompt.
+	a.CloseAISession()
 	a.logger.Info("gui shutdown")
 }
