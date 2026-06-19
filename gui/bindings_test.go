@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bannaarr01/packwright/config"
 	"github.com/bannaarr01/packwright/internal/record"
 	"github.com/bannaarr01/packwright/internal/theme"
 	"github.com/bannaarr01/packwright/internal/workspace"
@@ -21,6 +22,7 @@ func newTestApp() *App {
 }
 
 func TestProfileReadsEnvOrFallsBack(t *testing.T) {
+	t.Setenv("PACKWRIGHT_HOME", t.TempDir()) // hermetic: no persisted config.yaml
 	t.Setenv("AWS_PROFILE", "")
 	app := newTestApp()
 	if got := app.Profile(); got != "default" {
@@ -34,6 +36,7 @@ func TestProfileReadsEnvOrFallsBack(t *testing.T) {
 }
 
 func TestRegionReadsEitherEnvOrFallsBack(t *testing.T) {
+	t.Setenv("PACKWRIGHT_HOME", t.TempDir()) // hermetic: no persisted config.yaml
 	t.Setenv("AWS_REGION", "")
 	t.Setenv("AWS_DEFAULT_REGION", "")
 	app := newTestApp()
@@ -50,6 +53,30 @@ func TestRegionReadsEitherEnvOrFallsBack(t *testing.T) {
 	t.Setenv("AWS_REGION", "us-east-2")
 	if got := app.Region(); got != "us-east-2" {
 		t.Errorf("Region() with AWS_REGION set = %q, want %q", got, "us-east-2")
+	}
+}
+
+func TestProfilePrefersPersistedConfig(t *testing.T) {
+	t.Setenv("PACKWRIGHT_HOME", t.TempDir())
+	t.Setenv("AWS_PROFILE", "env-profile")
+	seed := &config.Config{Profile: "saved-profile", Region: "us-east-1"}
+	if err := seed.Save(); err != nil {
+		t.Fatalf("seed Save: %v", err)
+	}
+	if got := newTestApp().Profile(); got != "saved-profile" {
+		t.Errorf("Profile() = %q, want saved-profile (persisted config wins over env)", got)
+	}
+}
+
+func TestRegionPrefersPersistedConfig(t *testing.T) {
+	t.Setenv("PACKWRIGHT_HOME", t.TempDir())
+	t.Setenv("AWS_REGION", "env-region")
+	seed := &config.Config{Profile: "p", Region: "saved-region"}
+	if err := seed.Save(); err != nil {
+		t.Fatalf("seed Save: %v", err)
+	}
+	if got := newTestApp().Region(); got != "saved-region" {
+		t.Errorf("Region() = %q, want saved-region (persisted config wins over env)", got)
 	}
 }
 

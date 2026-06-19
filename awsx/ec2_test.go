@@ -24,6 +24,10 @@ type fakeEC2 struct {
 	lastVPCID string // captured from the last filtered call, for assertions
 	lastSGVPC string
 	failNext  error
+
+	regions     *ec2.DescribeRegionsOutput // canned DescribeRegions reply
+	regionsErr  error                      // when set, DescribeRegions fails with it
+	regionCalls int
 }
 
 func (f *fakeEC2) DescribeVpcs(_ context.Context, _ *ec2.DescribeVpcsInput, _ ...func(*ec2.Options)) (*ec2.DescribeVpcsOutput, error) {
@@ -69,6 +73,17 @@ func (f *fakeEC2) DescribeSecurityGroups(_ context.Context, in *ec2.DescribeSecu
 	out := f.sgs[0]
 	f.sgs = f.sgs[1:]
 	return out, nil
+}
+
+func (f *fakeEC2) DescribeRegions(_ context.Context, _ *ec2.DescribeRegionsInput, _ ...func(*ec2.Options)) (*ec2.DescribeRegionsOutput, error) {
+	f.regionCalls++
+	if f.regionsErr != nil {
+		return nil, f.regionsErr
+	}
+	if f.regions == nil {
+		return &ec2.DescribeRegionsOutput{}, nil
+	}
+	return f.regions, nil
 }
 
 func newEC2Client(t *testing.T, fake *fakeEC2) *Client {

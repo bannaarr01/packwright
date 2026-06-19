@@ -34,6 +34,8 @@
     onRunSlash: (sc: SlashCommand) => void;
     onOpenPalette: () => void;
     onOpenAI: () => void;
+    onOpenProfile: () => void;
+    onOpenRegion: () => void;
   }
 
   const {
@@ -45,6 +47,8 @@
     onRunSlash,
     onOpenPalette,
     onOpenAI,
+    onOpenProfile,
+    onOpenRegion,
   }: Props = $props();
 
   // SlashCommand list lives here (instead of inside IndependentGroup)
@@ -246,27 +250,43 @@
   </nav>
 
   <!-- Footer pill: AWS context. Mono everything because it's read like a
-       prompt line. Untouched by PR-10 — the Profile chip stays as the
-       existing UX. -->
+       prompt line. The profile and region segments are buttons that open the
+       profile / region switchers; the account stays read-only. -->
   <div class="px-3 py-3 border-t border-dark-border/40 shrink-0">
     {#if collapsed}
-      <div
+      <button
+        type="button"
         class="w-8 h-8 mx-auto grid place-items-center rounded-md bg-dark-border/30
-               font-mono text-[10px] text-dark-fg/70"
-        title={`${profile} · ${region} · ${account}`}
+               font-mono text-[10px] text-dark-fg/70 hover:text-dark-fg
+               focus:outline-none focus-visible:ring-1 focus-visible:ring-dark-accent"
+        title={`${profile} · ${region} · ${account} — switch profile`}
+        onclick={onOpenProfile}
       >
         {profile.slice(0, 2).toUpperCase()}
-      </div>
+      </button>
     {:else}
       <div
         class="px-2.5 py-2 rounded-md bg-dark-border/20 border border-dark-border/40
                font-mono text-[11px] leading-tight"
       >
-        <div class="flex items-center gap-2">
+        <button
+          type="button"
+          class="flex items-center gap-2 w-full text-left rounded text-dark-fg/90
+                 hover:text-dark-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-dark-accent"
+          title="Switch AWS profile"
+          onclick={onOpenProfile}
+        >
           <span class="w-1.5 h-1.5 rounded-full bg-dark-accent shrink-0"></span>
-          <span class="text-dark-fg/90 truncate">{profile}</span>
+          <span class="truncate">{profile}</span>
+        </button>
+        <div class="pl-3.5 truncate text-dark-fg/55">
+          <button
+            type="button"
+            class="rounded hover:text-dark-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-dark-accent"
+            title="Switch AWS region"
+            onclick={onOpenRegion}
+          >{region}</button> · {account}
         </div>
-        <div class="text-dark-fg/55 pl-3.5 truncate">{region} · {account}</div>
       </div>
     {/if}
   </div>

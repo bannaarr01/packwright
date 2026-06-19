@@ -189,18 +189,58 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case ProfileSwitcherMsg:
-		// The switcher emitted its result. Log and pop back to the
-		// previous screen — the actual identity is captured on the
-		// caller side (today: launcher) once persistence lands.
-		if a.logger != nil {
-			if m.Err != nil {
+		// On success, persist the chosen profile (and the region the SDK
+		// resolved for it) to config.yaml so the switch sticks across restarts
+		// and every call-time cfg read (run / audit / update) re-points to the
+		// new context. On failure, log and leave the active context untouched.
+		if m.Err != nil {
+			if a.logger != nil {
 				a.logger.Warn("tui profile switch failed",
 					slog.String("profile", m.Profile),
 					slog.Any("err", m.Err))
-			} else if m.Identity != nil {
+			}
+		} else if m.Identity != nil && a.cfg != nil {
+			a.cfg.Profile = m.Profile
+			if m.Identity.Region != "" {
+				a.cfg.Region = m.Identity.Region
+			} else if m.Region != "" {
+				a.cfg.Region = m.Region
+			}
+			a.saveContext()
+			if a.logger != nil {
 				a.logger.Info("tui profile switched",
-					slog.String("profile", m.Profile),
+					slog.String("profile", a.cfg.Profile),
+					slog.String("region", a.cfg.Region),
 					slog.String("account", m.Identity.Account))
+			}
+		}
+		if a.registry.Pop() {
+			a.refocusAfterPop()
+			a.applyContentSize()
+		}
+		return a, nil
+
+	case RegionSwitcherMsg:
+		// On a verified pick, persist the chosen region to config.yaml (the
+		// profile is unchanged) so subsequent call-time cfg reads re-point. On
+		// failure, log and leave the active region untouched.
+		if m.Err != nil {
+			if a.logger != nil {
+				a.logger.Warn("tui region switch failed",
+					slog.String("region", m.Region),
+					slog.Any("err", m.Err))
+			}
+		} else if a.cfg != nil {
+			a.cfg.Region = m.Region
+			a.saveContext()
+			if a.logger != nil {
+				account := ""
+				if m.Identity != nil {
+					account = m.Identity.Account
+				}
+				a.logger.Info("tui region switched",
+					slog.String("region", a.cfg.Region),
+					slog.String("account", account))
 			}
 		}
 		if a.registry.Pop() {
@@ -227,6 +267,19 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Fallthrough: forward to the top screen.
 	cmd := a.registry.UpdateTop(msg)
 	return a, cmd
+}
+
+// saveContext persists the in-memory config (profile / region) to config.yaml.
+// A write failure is logged but non-fatal: the switch still applies for the
+// current session through the shared cfg pointer; it just will not survive a
+// restart.
+func (a app) saveContext() {
+	if a.cfg == nil {
+		return
+	}
+	if err := a.cfg.Save(); err != nil && a.logger != nil {
+		a.logger.Warn("tui: persist config", slog.Any("err", err))
+	}
 }
 
 // handleKey routes one key to the right sub-model.
@@ -313,7 +366,7 @@ func (a app) handlePaletteSelection(m paletteSelectedMsg) (tea.Model, tea.Cmd) {
 		a.applyContentSize()
 		return a, cmd
 
-	case "/profile":
+	case slashProfile:
 		profiles, _ := awsx.ListProfiles()
 		active := ""
 		if a.cfg != nil {
@@ -321,6 +374,24 @@ func (a app) handlePaletteSelection(m paletteSelectedMsg) (tea.Model, tea.Cmd) {
 		}
 		ps := NewProfileSwitcher(a.keys, profiles, active, newTUIVerifier(a.home, a.logger), a.logger)
 		screen := newProfileScreen(ps)
+		cmd := a.registry.Push(screen)
+		a.focus = focusContent
+		a.tree.Focus(false)
+		a.applyContentSize()
+		return a, cmd
+
+	case slashRegion:
+		profile, region := "", ""
+		if a.cfg != nil {
+			profile, region = a.cfg.Profile, a.cfg.Region
+		}
+		// Seed with the static fallback so the list renders instantly; the
+		// switcher's Init command replaces it with the account's enabled
+		// regions (DescribeRegions) when that returns. The same verifier
+		// satisfies both the Verifier (Enter) and RegionLister (load) seams.
+		v := newTUIVerifier(a.home, a.logger)
+		rs := NewRegionSwitcher(a.keys, awsx.FallbackRegions(), profile, region, region, v, v, a.logger)
+		screen := newRegionScreen(rs)
 		cmd := a.registry.Push(screen)
 		a.focus = focusContent
 		a.tree.Focus(false)
@@ -456,7 +527,7 @@ func (a app) View() string {
 	}
 
 	row := lipgloss.JoinHorizontal(lipgloss.Top, sb, sep, body)
-	foot := a.footer.View(a.localKeys(), a.keys.GlobalBindings(), a.width)
+	foot := a.footer.View(a.localKeys(), a.keys.GlobalBindings(), a.contextLabel(), a.width)
 	return lipgloss.JoinVertical(lipgloss.Left, head, row, foot)
 }
 
@@ -483,6 +554,25 @@ func (a app) localKeys() []key.Binding {
 	default:
 		return a.registry.Top().KeyMap()
 	}
+}
+
+// contextLabel returns the active AWS context as "profile · region" for the
+// footer chip — the always-visible counterpart to the /profile and /region
+// switchers. Empty profile/region fall back to "default" / "-", mirroring the
+// GUI footer pill. Returns "" only when no config is loaded.
+func (a app) contextLabel() string {
+	if a.cfg == nil {
+		return ""
+	}
+	profile := a.cfg.Profile
+	if profile == "" {
+		profile = "default"
+	}
+	region := a.cfg.Region
+	if region == "" {
+		region = "-"
+	}
+	return profile + " · " + region
 }
 
 // sidebarWidth derives the sidebar width from the total terminal width.
