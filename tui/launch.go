@@ -144,6 +144,9 @@ func buildPaletteLoader(logger *slog.Logger) paletteLoader {
 		// them here so the palette can offer — and handlePaletteSelection can
 		// route — them. TUI-only: the GUI does not route these yet.
 		items = append(items, workspacePaletteItems()...)
+		// AWS-context commands (/profile, /region) are likewise handled by the
+		// root model rather than a manifest, so seed them here too.
+		items = append(items, awsContextPaletteItems()...)
 		return items
 	}
 }

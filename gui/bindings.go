@@ -64,28 +64,14 @@ var loadPalette = func() ([]pack.PaletteEntry, error) {
 	return pack.LoadPalette(home, cfg.PinnedDefaults)
 }
 
-// Profile returns the AWS profile the user appears to be using. For MVP-1
-// this reads $AWS_PROFILE with a "default" fallback; a future PR will wire
-// it to the config package.
-func (a *App) Profile() string {
-	if v := os.Getenv("AWS_PROFILE"); v != "" {
-		return v
-	}
-	return "default"
-}
+// Profile returns the AWS profile the user is using: the persisted config.yaml
+// profile wins, then $AWS_PROFILE, then "default". See currentProfileName.
+func (a *App) Profile() string { return currentProfileName() }
 
-// Region returns the AWS region the user appears to be in. For MVP-1 this
-// reads $AWS_REGION (then $AWS_DEFAULT_REGION) with a "-" fallback so the
-// header always has something to render.
-func (a *App) Region() string {
-	if v := os.Getenv("AWS_REGION"); v != "" {
-		return v
-	}
-	if v := os.Getenv("AWS_DEFAULT_REGION"); v != "" {
-		return v
-	}
-	return "-"
-}
+// Region returns the AWS region the user is in: the persisted config.yaml
+// region wins, then $AWS_REGION, then $AWS_DEFAULT_REGION, then "-". See
+// currentRegionName.
+func (a *App) Region() string { return currentRegionName() }
 
 // Account returns the AWS account id the user appears to be using. For MVP-1
 // this is a placeholder; resolving it requires an STS call which lives

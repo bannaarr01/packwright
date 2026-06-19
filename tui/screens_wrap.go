@@ -37,6 +37,22 @@ func (v *tuiVerifier) Verify(ctx context.Context, profile, region string) (*awsx
 	return awsx.Verify(ctx, client)
 }
 
+// ListRegions builds an awsx client for the profile/region pair and returns the
+// regions enabled for the account, falling back to awsx.FallbackRegions when
+// DescribeRegions cannot be called (no permission, transport failure, or the
+// client itself cannot be built). It satisfies the RegionSwitcher's
+// RegionLister dependency, the region-discovery counterpart of Verify.
+func (v *tuiVerifier) ListRegions(ctx context.Context, profile, region string) []string {
+	client, err := awsx.New(ctx, profile, region, v.home, v.logger)
+	if err != nil {
+		if v.logger != nil {
+			v.logger.Warn("tui: region discovery client", slog.Any("err", err))
+		}
+		return awsx.FallbackRegions()
+	}
+	return awsx.ListRegionsOrFallback(ctx, client, v.logger)
+}
+
 // This file adapts the existing concrete screen types (launcher, chat,
 // audit, profile) to the screens.Screen interface used by the shell's
 // registry. Wrapping rather than modifying the original Update methods
@@ -176,6 +192,38 @@ func (s *profileScreen) KeyMap() []key.Binding {
 
 // Title is the human-readable label rendered above the content pane.
 func (s *profileScreen) Title() string { return "Switch AWS profile" }
+
+// regionScreen wraps the RegionSwitcher (the /region screen).
+type regionScreen struct {
+	inner RegionSwitcher
+}
+
+func newRegionScreen(rs RegionSwitcher) *regionScreen { return &regionScreen{inner: rs} }
+
+// Init kicks off async region discovery so the live DescribeRegions result
+// replaces the seed (fallback) list once it returns.
+func (s *regionScreen) Init() tea.Cmd { return s.inner.initCmd() }
+
+// Update forwards to RegionSwitcher.Update and translates its closePaletteMsg
+// ("Esc with no filter") into a PopMsg.
+func (s *regionScreen) Update(msg tea.Msg) (screens.Screen, tea.Cmd) {
+	next, cmd := s.inner.Update(msg)
+	s.inner = next
+	return s, translateLeave(cmd)
+}
+
+// View delegates to RegionSwitcher.View.
+func (s *regionScreen) View() string { return s.inner.View() }
+
+// SetSize forwards the content-pane size.
+func (s *regionScreen) SetSize(w, h int) { s.inner.SetSize(w, h) }
+
+// KeyMap returns no screen-local bindings — the switcher inherits the global
+// keymap, matching the profile screen.
+func (s *regionScreen) KeyMap() []key.Binding { return nil }
+
+// Title is the human-readable label rendered above the content pane.
+func (s *regionScreen) Title() string { return "Switch AWS region" }
 
 // translateLeave wraps a screen-emitted tea.Cmd so that any legacy
 // "leave" message (leaveChatMsg, leaveAuditMsg, closePaletteMsg) is

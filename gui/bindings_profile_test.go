@@ -27,6 +27,7 @@ func TestListProfilesMarksActive(t *testing.T) {
 			}, nil
 		}
 	})
+	t.Setenv("PACKWRIGHT_HOME", t.TempDir()) // hermetic: Active reflects $AWS_PROFILE, not a persisted config
 	t.Setenv("AWS_PROFILE", "beta")
 	got, err := newTestApp().ListProfiles()
 	if err != nil {
@@ -49,6 +50,7 @@ func TestListProfilesFallsBackToDefault(t *testing.T) {
 			return []awsx.Profile{{Name: "default"}, {Name: "ops"}}, nil
 		}
 	})
+	t.Setenv("PACKWRIGHT_HOME", t.TempDir()) // hermetic: no persisted config.yaml
 	t.Setenv("AWS_PROFILE", "")
 	got, err := newTestApp().ListProfiles()
 	if err != nil {
@@ -141,6 +143,7 @@ func TestSwitchProfileSurfacesNewClientError(t *testing.T) {
 }
 
 func TestVerifyCurrentUsesEnvProfile(t *testing.T) {
+	t.Setenv("PACKWRIGHT_HOME", t.TempDir()) // hermetic: profile comes from $AWS_PROFILE, not a persisted config
 	t.Setenv("AWS_PROFILE", "ops")
 	var sawProfile string
 	withSwitcherDeps(t, func() {

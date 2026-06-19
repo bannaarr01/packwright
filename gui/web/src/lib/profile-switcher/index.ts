@@ -5,8 +5,9 @@
 // sites read like `await switcherApi.list()`.
 
 import { default as Switcher } from './Switcher.svelte';
+import { default as RegionSwitcher } from './RegionSwitcher.svelte';
 
-export { Switcher };
+export { Switcher, RegionSwitcher };
 
 export interface ProfileEntry {
   name: string;
@@ -37,6 +38,8 @@ export interface ProfileBindings {
   ListProfiles(): Promise<ProfileEntry[]>;
   SwitchProfile(profile: string, region: string): Promise<SwitchResult>;
   VerifyCurrent(): Promise<SwitchResult>;
+  ListRegions(): Promise<string[]>;
+  SwitchRegion(region: string): Promise<SwitchResult>;
 }
 
 // bindings reaches the App methods at runtime. Mirrors lib/api.ts's pattern so
@@ -57,6 +60,15 @@ export const switcherApi = {
   switch: (profile: string, region: string): Promise<SwitchResult> =>
     bindings().SwitchProfile(profile, region),
   verify: (): Promise<SwitchResult> => bindings().VerifyCurrent(),
+};
+
+// regionApi is the region counterpart of switcherApi, backed by
+// gui/bindings_region.go. list() returns the account's enabled regions (with a
+// static fallback); switch() changes only the region, holding the profile fixed.
+export const regionApi = {
+  list: (): Promise<string[]> => bindings().ListRegions(),
+  switch: (region: string): Promise<SwitchResult> =>
+    bindings().SwitchRegion(region),
 };
 
 // PROFILE_SWITCHED_EVENT mirrors gui/bindings_profile.go's ProfileSwitchedEvent

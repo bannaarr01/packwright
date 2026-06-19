@@ -8,6 +8,11 @@
   import Sidebar from './lib/sidebar/Sidebar.svelte';
   import StackActionPanel from './lib/stack/StackActionPanel.svelte';
   import { stackPanel } from './lib/stack/stackPanel';
+  import {
+    Switcher,
+    RegionSwitcher,
+    type SwitchResult,
+  } from './lib/profile-switcher';
 
   // Root component. Owns palette state, theme, AWS context, and sidebar
   // collapsed-ness. Sub components read those via props (one-way flow).
@@ -20,6 +25,19 @@
   let profile = $state('-');
   let region = $state('-');
   let account = $state('-');
+  // The profile / region switcher overlays, opened from the sidebar footer pill.
+  let profileSwitcherOpen = $state(false);
+  let regionSwitcherOpen = $state(false);
+
+  // applyResult refreshes the footer context from a successful switch. Both
+  // switchers return the verified Identity, so the chip updates without a
+  // round-trip to api.profile()/region()/account().
+  function applyResult(res: SwitchResult) {
+    if (!res.ok || !res.identity) return;
+    profile = res.identity.profile || profile;
+    region = res.identity.region || region;
+    account = res.identity.account || account;
+  }
 
   // Sidebar collapsed state — persisted across launches in localStorage so
   // the window opens the way the user left it. Defaults to expanded on a
@@ -110,6 +128,8 @@
     onRunSlash={runSlash}
     onOpenPalette={() => (paletteOpen = true)}
     onOpenAI={() => (aiOpen = true)}
+    onOpenProfile={() => (profileSwitcherOpen = true)}
+    onOpenRegion={() => (regionSwitcherOpen = true)}
   />
 
   <main class="flex-1 relative flex flex-col min-w-0">
@@ -152,6 +172,19 @@
       {/if}
       {#if aiOpen}
         <AIPanel onClose={() => (aiOpen = false)} />
+      {/if}
+      {#if profileSwitcherOpen}
+        <Switcher
+          onClose={() => (profileSwitcherOpen = false)}
+          onSwitched={applyResult}
+        />
+      {/if}
+      {#if regionSwitcherOpen}
+        <RegionSwitcher
+          active={region}
+          onClose={() => (regionSwitcherOpen = false)}
+          onSwitched={applyResult}
+        />
       {/if}
     </section>
   </main>

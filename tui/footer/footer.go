@@ -19,18 +19,22 @@ import (
 // Footer is the root-model-owned widget that renders the bottom strip.
 // One Footer is reused across renders.
 type Footer struct {
-	local  lipgloss.Style
-	global lipgloss.Style
-	sep    lipgloss.Style
+	local   lipgloss.Style
+	global  lipgloss.Style
+	sep     lipgloss.Style
+	context lipgloss.Style
 }
 
 // New returns a Footer ready to render. The "global" line is dimmer than
-// the "local" line so the active screen's bindings draw the eye first.
+// the "local" line so the active screen's bindings draw the eye first; the
+// context chip sits between the two in brightness so it reads as status, not
+// a binding.
 func New() Footer {
 	return Footer{
-		local:  lipgloss.NewStyle().Foreground(lipgloss.Color("250")),
-		global: lipgloss.NewStyle().Foreground(lipgloss.Color("241")),
-		sep:    lipgloss.NewStyle().Foreground(lipgloss.Color("237")),
+		local:   lipgloss.NewStyle().Foreground(lipgloss.Color("250")),
+		global:  lipgloss.NewStyle().Foreground(lipgloss.Color("241")),
+		sep:     lipgloss.NewStyle().Foreground(lipgloss.Color("237")),
+		context: lipgloss.NewStyle().Foreground(lipgloss.Color("246")),
 	}
 }
 
@@ -41,14 +45,38 @@ func (f Footer) Height() int { return 2 }
 // View renders the two-line footer at the given width. The bindings are
 // rendered as "key — label" pairs joined by " · ". An empty local list
 // renders as a blank top line so the global line stays anchored to the
-// terminal floor.
-func (f Footer) View(local, global []key.Binding, width int) string {
+// terminal floor. context, when non-empty (e.g. "profile · region"), is shown
+// right-aligned on the bottom line so the active AWS context is always visible.
+func (f Footer) View(local, global []key.Binding, context string, width int) string {
 	top := f.local.Render(joinBindings(local, " · "))
 	bot := f.global.Render(joinBindings(global, " · "))
-	if width <= 0 {
-		return top + "\n" + bot
+	ctx := ""
+	if context != "" {
+		ctx = f.context.Render(context)
 	}
-	return f.padTo(top, width) + "\n" + f.padTo(bot, width)
+	if width <= 0 {
+		return top + "\n" + f.composeRow(bot, ctx, 0)
+	}
+	return f.padTo(top, width) + "\n" + f.composeRow(bot, ctx, width)
+}
+
+// composeRow places left at the start and right at the end of a row of the
+// given width, filling the gap with spaces. When right is empty it behaves like
+// padTo(left). When the two cannot fit with a gap, they are joined by a single
+// space and the terminal handles any overflow.
+func (f Footer) composeRow(left, right string, width int) string {
+	if right == "" {
+		if width <= 0 {
+			return left
+		}
+		return f.padTo(left, width)
+	}
+	lw := lipgloss.Width(left)
+	rw := lipgloss.Width(right)
+	if width <= 0 || lw+rw+1 >= width {
+		return left + " " + right
+	}
+	return left + strings.Repeat(" ", width-lw-rw) + right
 }
 
 // padTo right-pads s with spaces so its rendered width matches width.
