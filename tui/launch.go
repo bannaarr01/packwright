@@ -135,10 +135,15 @@ func buildPaletteLoader(logger *slog.Logger) paletteLoader {
 			// Non-fatal: LoadPalette returns the entries that did parse.
 			logger.Warn("tui: palette: partial load", slog.Any("err", err))
 		}
-		items := make([]list.Item, 0, len(entries))
+		items := make([]list.Item, 0, len(entries)+6)
 		for _, e := range entries {
 			items = append(items, paletteItem{slash: e.Slash, title: e.Title})
 		}
+		// Built-in workspace/template commands (new-project, copy-template, …)
+		// have no backing manifest, so LoadPalette never surfaces them. Seed
+		// them here so the palette can offer — and handlePaletteSelection can
+		// route — them. TUI-only: the GUI does not route these yet.
+		items = append(items, workspacePaletteItems()...)
 		return items
 	}
 }

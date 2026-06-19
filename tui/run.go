@@ -386,6 +386,14 @@ func (a app) startManifestRun(slash string) (tea.Model, tea.Cmd) {
 // form. It swaps the form for the run screen in place (registry.Replace) so Esc
 // from the run returns to the launcher rather than back to a stale form.
 func (a app) handleFormSubmit(msg screens.FormSubmitMsg) (tea.Model, tea.Cmd) {
+	// A workspace/template action (new-project, copy-template, …) parks a
+	// pendingWorkspace instead of a pendingRun; it takes priority and runs
+	// through the workspace.go form → notice flow.
+	if a.pendingWorkspace != nil {
+		pw := a.pendingWorkspace
+		a.pendingWorkspace = nil
+		return a.finishWorkspace(pw, msg.Values)
+	}
 	if a.pendingRun == nil {
 		return a, nil
 	}

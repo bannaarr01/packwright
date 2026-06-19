@@ -67,6 +67,10 @@ type app struct {
 	// pendingRun holds the manifest picked from the palette while its input
 	// form is on screen; handleFormSubmit consumes it to launch the run.
 	pendingRun *pendingRun
+	// pendingWorkspace holds a workspace/template palette action (new-project,
+	// copy-template, …) while its form is on screen; handleFormSubmit consumes
+	// it the same way it consumes pendingRun. See workspace.go.
+	pendingWorkspace *pendingWorkspace
 }
 
 // newApp constructs the root model. logger receives palette-selection
@@ -322,6 +326,14 @@ func (a app) handlePaletteSelection(m paletteSelectedMsg) (tea.Model, tea.Cmd) {
 		a.tree.Focus(false)
 		a.applyContentSize()
 		return a, cmd
+
+	case slashNewProject, slashNewEnv, slashSwitchProject, slashListProjects,
+		slashCopyTemplate, slashPromoteTemplate:
+		// Workspace + template management (config / on-disk state, no AWS).
+		// These cobra-only slashes are seeded into the palette by
+		// workspacePaletteItems and run via the form → notice flow in
+		// workspace.go.
+		return a.handleWorkspaceSlash(m.Slash)
 
 	default:
 		// Any other slash is a manifest-backed command (the reference /alb
