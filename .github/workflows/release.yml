@@ -101,7 +101,7 @@ jobs:
       LDFLAGS: ${{ needs.meta.outputs.ldflags }}
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -277,7 +277,7 @@ jobs:
       LDFLAGS: ${{ needs.meta.outputs.ldflags }}
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -419,7 +419,7 @@ jobs:
       TARGET_ARCH: ${{ matrix.arch }}
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -637,13 +637,13 @@ jobs:
 
       - name: Check out source repo (for formula template)
         if: ${{ steps.gate.outputs.skip != 'true' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: src
 
       - name: Check out tap repo
         if: ${{ steps.gate.outputs.skip != 'true' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ env.TAP_REPO }}
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
