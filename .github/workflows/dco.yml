@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out PR head
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # Fetch every commit in the PR so the loop below can iterate
           # over them. GH default depth=1 would only see the tip.
