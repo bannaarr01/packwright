@@ -10,18 +10,18 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.54.0
 	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.72.1
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.59.0
-	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.76.0
+	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.78.0
 	github.com/aws/aws-sdk-go-v2/service/codepipeline v1.47.4
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.307.0
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.308.0
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.58.4
-	github.com/aws/aws-sdk-go-v2/service/ecs v1.83.0
+	github.com/aws/aws-sdk-go-v2/service/ecs v1.85.0
 	github.com/aws/aws-sdk-go-v2/service/efs v1.42.1
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.55.4
 	github.com/aws/aws-sdk-go-v2/service/pricing v1.42.7
 	github.com/aws/aws-sdk-go-v2/service/rds v1.119.3
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.104.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.43.3
-	github.com/aws/smithy-go v1.27.1
+	github.com/aws/smithy-go v1.27.2
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
